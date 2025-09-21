@@ -1,5 +1,8 @@
-import { createMocks } from 'node-mocks-http';
-import { POST } from '@/app/api/render/route';
+/**
+ * @jest-environment node
+ */
+
+import { NextRequest } from 'next/server';
 
 // Mock ffmpeg to avoid needing actual ffmpeg binary for tests
 jest.mock('fluent-ffmpeg', () => {
@@ -7,10 +10,10 @@ jest.mock('fluent-ffmpeg', () => {
     inputFPS: jest.fn().mockReturnThis(),
     outputOptions: jest.fn().mockReturnThis(),
     output: jest.fn().mockReturnThis(),
-    on: jest.fn().mockImplementation((event, callback) => {
+    on: jest.fn().mockImplementation((event: string, callback: () => void) => {
       if (event === 'end') {
         // Simulate successful completion
-        setTimeout(callback, 100);
+        setTimeout(callback, 10);
       }
       return mockCommand;
     }),
@@ -45,10 +48,26 @@ jest.mock('fs', () => ({
     stat: jest.fn().mockResolvedValue({ size: 1024 }),
     unlink: jest.fn().mockResolvedValue(undefined),
   },
+  mkdir: jest.fn(),
+  writeFile: jest.fn(),
+  unlink: jest.fn(),
+}));
+
+// Mock path module
+jest.mock('path', () => ({
+  join: jest.fn((...args) => args.join('/')),
+}));
+
+// Mock util module
+jest.mock('util', () => ({
+  promisify: jest.fn((fn) => fn),
 }));
 
 describe('/api/render', () => {
   it('should successfully render video with valid input', async () => {
+    // Import here to ensure mocks are applied
+    const { POST } = await import('../../src/app/api/render/route');
+    
     const testData = {
       width: 1080,
       height: 1920,
@@ -56,18 +75,16 @@ describe('/api/render', () => {
       render: "({time}) => { document.body.innerHTML = `ahojda ${time}`; }"
     };
 
-    const { req } = createMocks({
+    // Create a proper NextRequest mock
+    const request = new NextRequest('http://localhost:3000/api/render', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
       },
-      body: testData,
+      body: JSON.stringify(testData),
     });
 
-    // Mock req.json() to return our test data
-    req.json = jest.fn().mockResolvedValue(testData);
-
-    const response = await POST(req as any);
+    const response = await POST(request);
     const result = await response.json();
 
     expect(response.status).toBe(200);
@@ -81,21 +98,22 @@ describe('/api/render', () => {
   });
 
   it('should return 400 for missing required fields', async () => {
+    const { POST } = await import('../../src/app/api/render/route');
+    
     const invalidData = {
       width: 1080,
       // missing height, duration, render
     };
 
-    const { req } = createMocks({
+    const request = new NextRequest('http://localhost:3000/api/render', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
       },
+      body: JSON.stringify(invalidData),
     });
 
-    req.json = jest.fn().mockResolvedValue(invalidData);
-
-    const response = await POST(req as any);
+    const response = await POST(request);
     const result = await response.json();
 
     expect(response.status).toBe(400);
@@ -103,14 +121,17 @@ describe('/api/render', () => {
   });
 
   it('should return 400 for invalid content type', async () => {
-    const { req } = createMocks({
+    const { POST } = await import('../../src/app/api/render/route');
+    
+    const request = new NextRequest('http://localhost:3000/api/render', {
       method: 'POST',
       headers: {
         'content-type': 'application/x-www-form-urlencoded',
       },
+      body: 'invalid=data',
     });
 
-    const response = await POST(req as any);
+    const response = await POST(request);
     const result = await response.json();
 
     expect(response.status).toBe(400);
@@ -118,16 +139,17 @@ describe('/api/render', () => {
   });
 
   it('should return 400 for invalid JSON', async () => {
-    const { req } = createMocks({
+    const { POST } = await import('../../src/app/api/render/route');
+    
+    const request = new NextRequest('http://localhost:3000/api/render', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
       },
+      body: 'invalid json',
     });
 
-    req.json = jest.fn().mockRejectedValue(new Error('Invalid JSON'));
-
-    const response = await POST(req as any);
+    const response = await POST(request);
     const result = await response.json();
 
     expect(response.status).toBe(400);
