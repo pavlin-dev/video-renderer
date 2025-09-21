@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { chromium } from "playwright";
-import * as ffmpeg from "fluent-ffmpeg";
+import ffmpeg from "fluent-ffmpeg";
 import * as fs from "fs";
 import * as path from "path";
 import { promisify } from "util";
@@ -153,8 +153,7 @@ export async function POST(request: NextRequest) {
 
         // Generate video with FFmpeg
         await new Promise<void>((resolve, reject) => {
-            ffmpeg()
-                .input(path.join(framesDir, "frame_%06d.png"))
+            const command = ffmpeg(path.join(framesDir, "frame_%06d.png"))
                 .inputFPS(fps)
                 .outputOptions([
                     "-c:v libx264",
@@ -163,8 +162,12 @@ export async function POST(request: NextRequest) {
                 ])
                 .output(outputPath)
                 .on("end", resolve)
-                .on("error", reject)
-                .run();
+                .on("error", reject);
+
+            // Use system ffmpeg - make sure it's installed
+            // You can install it with: brew install ffmpeg
+
+            command.run();
         });
 
         // Clean up frame files
