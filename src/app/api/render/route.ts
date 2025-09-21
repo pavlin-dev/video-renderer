@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
         await mkdir(tempDir, { recursive: true });
         await mkdir(framesDir, { recursive: true });
 
-        // Launch browser with system Chromium
+        // Launch browser with Playwright's auto-detected Chromium
         const browser = await chromium.launch({
             headless: true,
             args: [
@@ -106,12 +106,7 @@ export async function POST(request: NextRequest) {
                 '--no-zygote',
                 '--single-process',
                 '--disable-extensions'
-            ],
-            env: {
-                ...process.env,
-                PLAYWRIGHT_BROWSERS_PATH: '0',
-                PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
-            }
+            ]
         });
         const page = await browser.newPage();
         await page.setViewportSize({ width, height });
