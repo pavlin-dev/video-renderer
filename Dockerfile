@@ -29,10 +29,9 @@ RUN apk add --no-cache \
     wget \
     dumb-init
 
-# Tell Playwright to use system Chromium
+# Configure Playwright (remove conflicting variables)
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
-    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     NODE_ENV=production
 
 # Copy package files

@@ -93,12 +93,10 @@ export async function POST(request: NextRequest) {
         await mkdir(tempDir, { recursive: true });
         await mkdir(framesDir, { recursive: true });
 
-        // Force Playwright to use the correct Chromium executable
-        // We explicitly set the path to avoid chromium_headless_shell issues
-        const chromiumPath = '/home/node/.cache/ms-playwright/chromium-1187/chrome-linux/chrome';
-        
+        // Force Playwright to use the correct Chromium executable (confirmed by debug endpoint)
+        // Path verified: /home/node/.cache/ms-playwright/chromium-1187/chrome-linux/chrome exists and is executable
         const browser = await chromium.launch({
-            executablePath: chromiumPath,
+            executablePath: '/home/node/.cache/ms-playwright/chromium-1187/chrome-linux/chrome',
             headless: true,
             args: [
                 '--no-sandbox',
