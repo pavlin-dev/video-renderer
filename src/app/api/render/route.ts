@@ -93,17 +93,17 @@ export async function POST(request: NextRequest) {
         await mkdir(tempDir, { recursive: true });
         await mkdir(framesDir, { recursive: true });
 
-        // Launch browser with fallback executable paths for different architectures
+        // Find working Chromium executable and force Playwright to use it
         const possiblePaths = [
             '/home/node/.cache/ms-playwright/chromium-1187/chrome-linux/chrome',  // x64
             '/home/node/.cache/ms-playwright/chromium-1187/chrome-linux/chromium', // fallback
         ];
         
-        let executablePath: string | undefined = undefined;
+        let workingExecutable: string | undefined = undefined;
         for (const path of possiblePaths) {
             try {
                 if (fs.existsSync(path)) {
-                    executablePath = path;
+                    workingExecutable = path;
                     break;
                 }
             } catch {
@@ -111,8 +111,13 @@ export async function POST(request: NextRequest) {
             }
         }
 
+        // Force Playwright to use our executable via environment variables
+        const originalExecutable = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+        if (workingExecutable) {
+            process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = workingExecutable;
+        }
+
         const browser = await chromium.launch({
-            executablePath,
             headless: true,
             args: [
                 '--no-sandbox',
@@ -126,6 +131,13 @@ export async function POST(request: NextRequest) {
                 '--disable-extensions'
             ]
         });
+
+        // Restore original environment
+        if (originalExecutable) {
+            process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = originalExecutable;
+        } else {
+            delete process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+        }
         const page = await browser.newPage();
         await page.setViewportSize({ width, height });
 
