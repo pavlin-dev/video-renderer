@@ -234,6 +234,9 @@ Update `BASE_URL` in your environment variables to your production domain.
 # Or manually
 docker build -t video-renderer .
 docker run -p 3000:3000 -e BASE_URL=http://localhost:3000 video-renderer
+
+# For faster builds (multi-stage)
+docker build -f Dockerfile.optimized -t video-renderer:optimized .
 ```
 
 #### Docker Compose
