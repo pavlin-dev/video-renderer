@@ -3,7 +3,19 @@
 import { useState } from 'react';
 
 export default function Home() {
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<{
+    success: boolean;
+    video?: {
+      url: string;
+      size: number;
+      frames: number;
+      duration: number;
+      fps: number;
+      width: number;
+      height: number;
+    };
+    error?: string;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -74,12 +86,12 @@ export default function Home() {
     render: examples[0].code
   });
 
-  const handleExampleSelect = (example: any) => {
+  const handleExampleSelect = (example: { name: string; code: string }) => {
     setSelectedExample(example);
     setFormData(prev => ({ ...prev, render: example.code }));
   };
 
-  const handleSubmit = async (e: any) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
@@ -252,14 +264,14 @@ export default function Home() {
               <div className="mt-6 p-6 bg-green-50 border border-green-200 rounded-lg">
                 <h3 className="text-lg font-semibold text-green-800 mb-3">✅ Video Created!</h3>
                 <div className="space-y-2 text-sm text-green-700">
-                  <p><strong>Size:</strong> {(result.video.size / 1024).toFixed(2)} KB</p>
-                  <p><strong>Frames:</strong> {result.video.frames}</p>
-                  <p><strong>Dimensions:</strong> {result.video.width}x{result.video.height}</p>
-                  <p><strong>Duration:</strong> {result.video.duration}s</p>
-                  <p><strong>Video URL:</strong> <a href={result.video.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">{result.video.url}</a></p>
+                  <p><strong>Size:</strong> {((result.video?.size ?? 0) / 1024).toFixed(2)} KB</p>
+                  <p><strong>Frames:</strong> {result.video?.frames}</p>
+                  <p><strong>Dimensions:</strong> {result.video?.width}x{result.video?.height}</p>
+                  <p><strong>Duration:</strong> {result.video?.duration}s</p>
+                  <p><strong>Video URL:</strong> <a href={result.video?.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">{result.video?.url}</a></p>
                   <div className="mt-4">
                     <video controls className="w-full max-w-sm mx-auto rounded-lg">
-                      <source src={result.video.url} type="video/mp4" />
+                      <source src={result.video?.url} type="video/mp4" />
                       Your browser does not support the video tag.
                     </video>
                   </div>

@@ -6,15 +6,8 @@ import * as path from "path";
 import { promisify } from "util";
 
 const mkdir = promisify(fs.mkdir);
-const writeFile = promisify(fs.writeFile);
 const unlink = promisify(fs.unlink);
 
-interface RenderRequest {
-    width: number;
-    height: number;
-    duration: number;
-    render: string;
-}
 
 interface FrameContext {
     time: number;
@@ -36,10 +29,15 @@ export async function POST(request: NextRequest) {
         }
 
         // Parse and validate JSON body
-        let body: any;
+        let body: {
+            width?: number;
+            height?: number;
+            duration?: number;
+            render?: string;
+        };
         try {
             body = await request.json();
-        } catch (error) {
+        } catch {
             return NextResponse.json(
                 { error: "Invalid JSON body" },
                 { status: 400 }
@@ -137,8 +135,8 @@ export async function POST(request: NextRequest) {
             };
 
             // Execute render function
-            await page.evaluate((ctx) => {
-                (window as any).updateFrame(ctx);
+            await page.evaluate((ctx: FrameContext) => {
+                (window as unknown as { updateFrame: (ctx: FrameContext) => void }).updateFrame(ctx);
             }, context);
 
             // Capture screenshot
@@ -162,7 +160,7 @@ export async function POST(request: NextRequest) {
                     "-movflags +faststart"
                 ])
                 .output(outputPath)
-                .on("end", resolve)
+                .on("end", () => resolve())
                 .on("error", reject);
 
             // Use system ffmpeg - make sure it's installed

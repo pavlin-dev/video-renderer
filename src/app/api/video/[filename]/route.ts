@@ -4,10 +4,10 @@ import * as path from 'path';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { filename: string } }
+  context: { params: Promise<{ filename: string }> }
 ) {
   try {
-    const { filename } = params;
+    const { filename } = await context.params;
     
     // Security: Only allow video files with proper extensions
     if (!filename.endsWith('.mp4')) {

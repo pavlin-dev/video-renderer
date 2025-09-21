@@ -1,5 +1,23 @@
-# Use Node.js 18 Alpine as base image
-FROM node:18-alpine
+# Multi-stage build for smaller final image
+FROM node:18-alpine AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install ALL dependencies (including dev dependencies for build)
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN npm run build
+
+# Production stage
+FROM node:18-alpine AS production
 
 # Set working directory
 WORKDIR /app
@@ -20,17 +38,18 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
+# Install only production dependencies
 RUN npm ci --omit=dev && npm cache clean --force
 
-# Copy source code
-COPY . .
+# Copy built application from builder stage
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+
+# Copy other necessary files
+COPY next.config.js ./
 
 # Create temp directory for videos
-RUN mkdir -p temp
-
-# Build the application
-RUN npm run build
+RUN mkdir -p temp && chown -R node:node temp
 
 # Set environment variables
 ENV BASE_URL=http://localhost:3000
