@@ -193,9 +193,15 @@ export async function POST(request: NextRequest) {
         // Get video file stats
         const stats = await fs.promises.stat(outputPath);
 
+        // Create video URL
+        const videoFilename = path.basename(outputPath);
+        const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+        const videoUrl = `${baseUrl}/api/video/${videoFilename}`;
+
         return NextResponse.json({
             success: true,
             video: {
+                url: videoUrl,
                 path: outputPath,
                 size: stats.size,
                 frames: totalFrames,

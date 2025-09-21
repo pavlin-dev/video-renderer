@@ -3,7 +3,7 @@
 import { useState } from 'react';
 
 export default function Home() {
-  const [result, setResult] = useState(null);
+  const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -74,12 +74,12 @@ export default function Home() {
     render: examples[0].code
   });
 
-  const handleExampleSelect = (example) => {
+  const handleExampleSelect = (example: any) => {
     setSelectedExample(example);
     setFormData(prev => ({ ...prev, render: example.code }));
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: any) => {
     e.preventDefault();
     setLoading(true);
     setError('');
@@ -101,7 +101,7 @@ export default function Home() {
       } else {
         setError(data.error || 'Something went wrong');
       }
-    } catch (err) {
+    } catch {
       setError('Failed to connect to the API');
     } finally {
       setLoading(false);
@@ -118,7 +118,7 @@ export default function Home() {
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
             Generate videos from HTML and JavaScript. Write a render function that returns HTML, 
-            and we'll create a video with your animations frame by frame.
+            and we&apos;ll create a video with your animations frame by frame.
           </p>
         </div>
 
@@ -256,7 +256,13 @@ export default function Home() {
                   <p><strong>Frames:</strong> {result.video.frames}</p>
                   <p><strong>Dimensions:</strong> {result.video.width}x{result.video.height}</p>
                   <p><strong>Duration:</strong> {result.video.duration}s</p>
-                  <p><strong>Path:</strong> <code className="bg-green-100 px-1 rounded">{result.video.path}</code></p>
+                  <p><strong>Video URL:</strong> <a href={result.video.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">{result.video.url}</a></p>
+                  <div className="mt-4">
+                    <video controls className="w-full max-w-sm mx-auto rounded-lg">
+                      <source src={result.video.url} type="video/mp4" />
+                      Your browser does not support the video tag.
+                    </video>
+                  </div>
                 </div>
               </div>
             )}
