@@ -93,8 +93,26 @@ export async function POST(request: NextRequest) {
         await mkdir(tempDir, { recursive: true });
         await mkdir(framesDir, { recursive: true });
 
-        // Launch browser
-        const browser = await chromium.launch();
+        // Launch browser with system Chromium
+        const browser = await chromium.launch({
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--disable-gpu',
+                '--no-first-run',
+                '--no-zygote',
+                '--single-process',
+                '--disable-extensions'
+            ],
+            env: {
+                ...process.env,
+                PLAYWRIGHT_BROWSERS_PATH: '0',
+                PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+            }
+        });
         const page = await browser.newPage();
         await page.setViewportSize({ width, height });
 

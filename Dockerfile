@@ -41,6 +41,9 @@ COPY package*.json ./
 # Install only production dependencies
 RUN npm ci --omit=dev && npm cache clean --force
 
+# Install Playwright browsers for production (without system deps, using Alpine packages)
+RUN npx playwright install chromium
+
 # Copy built application from builder stage
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
