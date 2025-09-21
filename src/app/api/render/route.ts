@@ -34,6 +34,8 @@ export async function POST(request: NextRequest) {
             height?: number;
             duration?: number;
             render?: string;
+            fps?: number;
+            quality?: 'low' | 'medium' | 'high';
         };
         try {
             body = await request.json();
@@ -52,7 +54,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const { width, height, duration, render } = body;
+        const { width, height, duration, render, fps: requestedFps, quality } = body;
 
         // Validate required fields and types
         if (typeof width !== "number" || width <= 0) {
@@ -83,7 +85,24 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const fps = 30;
+        // Validate optional fields
+        if (requestedFps !== undefined && (typeof requestedFps !== "number" || requestedFps <= 0 || requestedFps > 60)) {
+            return NextResponse.json(
+                { error: "fps must be a positive number between 1 and 60" },
+                { status: 400 }
+            );
+        }
+
+        if (quality !== undefined && !['low', 'medium', 'high'].includes(quality)) {
+            return NextResponse.json(
+                { error: "quality must be 'low', 'medium', or 'high'" },
+                { status: 400 }
+            );
+        }
+
+        // Use optimized defaults for better performance
+        const fps = requestedFps || 24; // Lower default FPS for better performance
+        const videoQuality = quality || 'medium';
         const totalFrames = Math.ceil(duration * fps);
         const tempDir = path.join(process.cwd(), "temp");
         const framesDir = path.join(tempDir, `frames_${Date.now()}`);
@@ -99,56 +118,52 @@ export async function POST(request: NextRequest) {
             executablePath = undefined; // Let Playwright auto-detect
         }
 
+        // Optimized Chrome args for lower CPU usage
+        const chromeArgs = [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-gpu-sandbox',
+            '--disable-software-rasterizer',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-features=TranslateUI,AudioServiceOutOfProcess',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-extensions',
+            '--disable-default-apps',
+            '--disable-background-networking',
+            '--disable-breakpad',
+            '--disable-client-side-phishing-detection',
+            '--disable-component-extensions-with-background-pages',
+            '--disable-domain-reliability',
+            '--disable-hang-monitor',
+            '--disable-popup-blocking',
+            '--disable-prompt-on-repost',
+            '--disable-sync',
+            '--disable-translate',
+            '--disable-web-security',
+            '--hide-scrollbars',
+            '--mute-audio',
+            '--no-default-browser-check',
+            '--no-pings',
+            '--no-service-autorun',
+            '--password-store=basic',
+            '--use-mock-keychain',
+            // Performance optimizations
+            '--enable-aggressive-domstorage-flushing',
+            '--enable-low-end-device-mode',
+            '--max_old_space_size=2048', // Reduced memory limit
+            '--memory-pressure-off'
+        ];
+
         const browser = await chromium.launch({
             executablePath,
             headless: true,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--disable-gpu',
-                '--disable-gpu-sandbox',
-                '--disable-software-rasterizer',
-                '--disable-background-timer-throttling',
-                '--disable-backgrounding-occluded-windows',
-                '--disable-renderer-backgrounding',
-                '--disable-features=TranslateUI',
-                '--disable-ipc-flooding-protection',
-                '--no-first-run',
-                '--no-zygote',
-                '--single-process',
-                '--disable-extensions',
-                '--disable-default-apps',
-                '--memory-pressure-off',
-                '--max_old_space_size=4096',
-                '--disable-background-networking',
-                '--disable-background-timer-throttling',
-                '--disable-breakpad',
-                '--disable-client-side-phishing-detection',
-                '--disable-component-extensions-with-background-pages',
-                '--disable-default-apps',
-                '--disable-domain-reliability',
-                '--disable-features=AudioServiceOutOfProcess',
-                '--disable-hang-monitor',
-                '--disable-popup-blocking',
-                '--disable-prompt-on-repost',
-                '--disable-sync',
-                '--disable-translate',
-                '--disable-web-security',
-                '--enable-features=NetworkService,NetworkServiceInProcess',
-                '--hide-scrollbars',
-                '--ignore-certificate-errors',
-                '--ignore-ssl-errors',
-                '--ignore-certificate-errors-spki-list',
-                '--ignore-ssl-errors-related-to-url-prefixes',
-                '--mute-audio',
-                '--no-default-browser-check',
-                '--no-pings',
-                '--no-service-autorun',
-                '--password-store=basic',
-                '--use-mock-keychain'
-            ]
+            args: chromeArgs
         });
 
         let page;
@@ -181,29 +196,48 @@ export async function POST(request: NextRequest) {
 
             await page.setContent(htmlTemplate);
 
-            // Render frames
-            for (let frame = 0; frame < totalFrames; frame++) {
-                const time = frame / fps;
-                const context: FrameContext = {
-                    time,
-                    frame,
-                    duration,
-                    width,
-                    height
-                };
+            // Optimize page settings for performance
+            page.setDefaultTimeout(5000); // Shorter timeout
+            page.setDefaultNavigationTimeout(5000);
 
-                // Execute render function
-                await page.evaluate((ctx: FrameContext) => {
-                    (window as unknown as { updateFrame: (ctx: FrameContext) => void }).updateFrame(ctx);
-                }, context);
+            // Render frames with optimized batching
+            const batchSize = 5; // Process frames in small batches to reduce memory pressure
+            for (let batchStart = 0; batchStart < totalFrames; batchStart += batchSize) {
+                const batchEnd = Math.min(batchStart + batchSize, totalFrames);
+                
+                for (let frame = batchStart; frame < batchEnd; frame++) {
+                    const time = frame / fps;
+                    const context: FrameContext = {
+                        time,
+                        frame,
+                        duration,
+                        width,
+                        height
+                    };
 
-                // Capture screenshot
-                const framePath = path.join(
-                    framesDir,
-                    `frame_${frame.toString().padStart(6, "0")}.png`
-                );
-                await page.screenshot({ path: framePath, fullPage: false });
-                framePaths.push(framePath);
+                    // Execute render function
+                    await page.evaluate((ctx: FrameContext) => {
+                        (window as unknown as { updateFrame: (ctx: FrameContext) => void }).updateFrame(ctx);
+                    }, context);
+
+                    // Capture screenshot with optimized settings
+                    const framePath = path.join(
+                        framesDir,
+                        `frame_${frame.toString().padStart(6, "0")}.png`
+                    );
+                    await page.screenshot({ 
+                        path: framePath, 
+                        fullPage: false,
+                        type: 'png',
+                        omitBackground: false
+                    });
+                    framePaths.push(framePath);
+                }
+
+                // Small delay between batches to prevent overwhelming the system
+                if (batchEnd < totalFrames) {
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                }
             }
         } finally {
             // Always close browser and page, even if there's an error
@@ -222,21 +256,48 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Generate video with FFmpeg
+        // Generate video with FFmpeg - optimized settings based on quality
+        const getFFmpegOptions = (quality: string) => {
+            const baseOptions = [
+                "-c:v libx264",
+                "-pix_fmt yuv420p", 
+                "-movflags +faststart"
+            ];
+
+            switch (quality) {
+                case 'low':
+                    return [
+                        ...baseOptions,
+                        "-preset ultrafast", // Fastest encoding
+                        "-crf 28",           // Lower quality, smaller file
+                        "-threads 2"         // Limit CPU threads
+                    ];
+                case 'medium':
+                    return [
+                        ...baseOptions,
+                        "-preset fast",      // Fast encoding
+                        "-crf 23",          // Balanced quality
+                        "-threads 4"        // Moderate CPU usage
+                    ];
+                case 'high':
+                    return [
+                        ...baseOptions,
+                        "-preset medium",    // Better quality
+                        "-crf 18",          // High quality
+                        "-threads 6"        // More CPU for quality
+                    ];
+                default:
+                    return baseOptions;
+            }
+        };
+
         await new Promise<void>((resolve, reject) => {
             const command = ffmpeg(path.join(framesDir, "frame_%06d.png"))
                 .inputFPS(fps)
-                .outputOptions([
-                    "-c:v libx264",
-                    "-pix_fmt yuv420p",
-                    "-movflags +faststart"
-                ])
+                .outputOptions(getFFmpegOptions(videoQuality))
                 .output(outputPath)
                 .on("end", () => resolve())
                 .on("error", reject);
-
-            // Use system ffmpeg - make sure it's installed
-            // You can install it with: brew install ffmpeg
 
             command.run();
         });
