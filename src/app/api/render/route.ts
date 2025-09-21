@@ -93,31 +93,12 @@ export async function POST(request: NextRequest) {
         await mkdir(tempDir, { recursive: true });
         await mkdir(framesDir, { recursive: true });
 
-        // Find working Chromium executable and force Playwright to use it
-        const possiblePaths = [
-            '/home/node/.cache/ms-playwright/chromium-1187/chrome-linux/chrome',  // x64
-            '/home/node/.cache/ms-playwright/chromium-1187/chrome-linux/chromium', // fallback
-        ];
+        // Force Playwright to use the correct Chromium executable
+        // We explicitly set the path to avoid chromium_headless_shell issues
+        const chromiumPath = '/home/node/.cache/ms-playwright/chromium-1187/chrome-linux/chrome';
         
-        let workingExecutable: string | undefined = undefined;
-        for (const path of possiblePaths) {
-            try {
-                if (fs.existsSync(path)) {
-                    workingExecutable = path;
-                    break;
-                }
-            } catch {
-                // Continue to next path
-            }
-        }
-
-        // Force Playwright to use our executable via environment variables
-        const originalExecutable = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
-        if (workingExecutable) {
-            process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = workingExecutable;
-        }
-
         const browser = await chromium.launch({
+            executablePath: chromiumPath,
             headless: true,
             args: [
                 '--no-sandbox',
@@ -131,13 +112,6 @@ export async function POST(request: NextRequest) {
                 '--disable-extensions'
             ]
         });
-
-        // Restore original environment
-        if (originalExecutable) {
-            process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = originalExecutable;
-        } else {
-            delete process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
-        }
         const page = await browser.newPage();
         await page.setViewportSize({ width, height });
 
