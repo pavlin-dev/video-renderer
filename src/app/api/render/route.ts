@@ -93,43 +93,14 @@ export async function POST(request: NextRequest) {
         await mkdir(tempDir, { recursive: true });
         await mkdir(framesDir, { recursive: true });
 
-        // Find and verify the correct Chromium executable before launching
-        const possiblePaths = [
-            '/home/node/.cache/ms-playwright/chromium-1187/chrome-linux/chrome',
-            '/home/node/.cache/ms-playwright/chromium-1187/chrome-linux/chromium',
-            '/usr/bin/chromium',
-            '/usr/lib/chromium/chromium'
-        ];
-        
-        let workingPath: string | undefined;
-        for (const path of possiblePaths) {
-            if (fs.existsSync(path)) {
-                try {
-                    // Check if executable
-                    const stats = fs.statSync(path);
-                    if (stats.mode & 0o111) {
-                        workingPath = path;
-                        break;
-                    }
-                } catch {
-                    continue;
-                }
-            }
-        }
-
-        if (!workingPath) {
-            // Enhanced debugging info
-            const debugInfo = possiblePaths.map(path => ({
-                path,
-                exists: fs.existsSync(path),
-                isFile: fs.existsSync(path) ? fs.statSync(path).isFile() : false,
-                executable: fs.existsSync(path) ? !!(fs.statSync(path).mode & 0o111) : false
-            }));
-            throw new Error(`No working Chromium executable found. Debug info: ${JSON.stringify(debugInfo, null, 2)}`);
+        // Use system Chromium (fallback to auto-detection if not exists)
+        let executablePath: string | undefined = '/usr/lib/chromium/chromium';
+        if (!fs.existsSync(executablePath)) {
+            executablePath = undefined; // Let Playwright auto-detect
         }
 
         const browser = await chromium.launch({
-            executablePath: workingPath,
+            executablePath,
             headless: true,
             args: [
                 '--no-sandbox',
