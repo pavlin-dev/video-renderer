@@ -113,7 +113,8 @@ export async function POST(request: NextRequest) {
           <script>
             const renderFunction = ${render};
             window.updateFrame = (context) => {
-              renderFunction(context);
+              const html = renderFunction(context);
+              document.body.innerHTML = html;
             };
           </script>
         </body>

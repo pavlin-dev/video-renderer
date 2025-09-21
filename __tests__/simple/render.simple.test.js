@@ -8,7 +8,7 @@ describe('Simple Video Render Test', () => {
       width: 1080,
       height: 1920,
       duration: 1,
-      render: "({time}) => { document.body.innerHTML = `ahojda ${time}`; }"
+      render: "({time}) => { return `<h1>ahojda ${time}</h1>`; }"
     };
 
     // Basic validation tests
@@ -18,15 +18,16 @@ describe('Simple Video Render Test', () => {
     expect(typeof testData.render).toBe('string');
     expect(testData.render).toContain('ahojda');
     expect(testData.render).toContain('time');
+    expect(testData.render).toContain('return');
   });
 
   it('should validate render function structure', () => {
-    const renderFunction = "({time}) => { document.body.innerHTML = `ahojda ${time}`; }";
+    const renderFunction = "({time}) => { return `<h1>ahojda ${time}</h1>`; }";
     
     // Check function contains required parts
     expect(renderFunction).toContain('{time}');
     expect(renderFunction).toContain('=>');
-    expect(renderFunction).toContain('document.body');
+    expect(renderFunction).toContain('return');
     expect(renderFunction).toContain('ahojda');
   });
 
@@ -35,7 +36,7 @@ describe('Simple Video Render Test', () => {
       width: 1080,
       height: 1920,
       duration: 1,
-      render: "({time}) => { document.body.innerHTML = `ahojda ${time}`; }"
+      render: "({time}) => { return `<h1>ahojda ${time}</h1>`; }"
     };
 
     const requiredFields = ['width', 'height', 'duration', 'render'];
