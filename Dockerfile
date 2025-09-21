@@ -51,8 +51,11 @@ COPY --from=builder /app/public ./public
 # Copy other necessary files
 COPY next.config.js ./
 
-# Create temp directory for videos
-RUN mkdir -p temp && chown -R node:node temp
+# Create temp directory for videos and fix Playwright cache permissions
+RUN mkdir -p temp && \
+    mkdir -p /home/node/.cache && \
+    cp -r /root/.cache/ms-playwright /home/node/.cache/ && \
+    chown -R node:node temp /home/node/.cache
 
 # Set environment variables
 ENV BASE_URL=http://localhost:3000

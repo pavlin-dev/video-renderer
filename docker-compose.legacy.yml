@@ -1,20 +1,16 @@
-version: "3.8"
+version: "3.7"
 
 services:
   video-renderer:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=production
-      - BASE_URL=https://video-renderer.pavlin.dev
+      NODE_ENV: production
+      BASE_URL: https://video-renderer.pavlin.dev
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
 
   # Optional: Nginx reverse proxy
   nginx:
