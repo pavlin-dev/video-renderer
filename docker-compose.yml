@@ -1,33 +1,41 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  video-renderer:
-    build: .
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - BASE_URL=http://localhost:3000
-    volumes:
-      # Optional: Mount temp directory for persistence
-      - ./temp:/app/temp
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+    video-renderer:
+        build: .
+        ports:
+            - "3000:3000"
+        environment:
+            - NODE_ENV=production
+            - BASE_URL=https://video-renderer.pavlin.dev
+        # volumes:
+        # Optional: Mount temp directory for persistence (disabled due to permission issues)
+        # - ./temp:/app/temp
+        restart: unless-stopped
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "wget",
+                    "--no-verbose",
+                    "--tries=1",
+                    "--spider",
+                    "http://localhost:3000/api/health"
+                ]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 60s
 
-  # Optional: Nginx reverse proxy
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - video-renderer
-    restart: unless-stopped
-    profiles:
-      - "with-proxy"
+    # Optional: Nginx reverse proxy
+    nginx:
+        image: nginx:alpine
+        ports:
+            - "80:80"
+        volumes:
+            - ./nginx.conf:/etc/nginx/nginx.conf:ro
+        depends_on:
+            - video-renderer
+        restart: unless-stopped
+        profiles:
+            - "with-proxy"
