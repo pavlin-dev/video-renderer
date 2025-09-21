@@ -150,60 +150,77 @@ export async function POST(request: NextRequest) {
                 '--use-mock-keychain'
             ]
         });
-        const page = await browser.newPage();
-        await page.setViewportSize({ width, height });
 
-        // Create HTML template
-        const htmlTemplate = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <style>
-            body { margin: 0; padding: 0; width: ${width}px; height: ${height}px; overflow: hidden; }
-          </style>
-        </head>
-        <body>
-          <script>
-            const renderFunction = ${render};
-            window.updateFrame = (context) => {
-              const html = renderFunction(context);
-              document.body.innerHTML = html;
-            };
-          </script>
-        </body>
-      </html>
-    `;
-
-        await page.setContent(htmlTemplate);
-
+        let page;
         const framePaths: string[] = [];
 
-        // Render frames
-        for (let frame = 0; frame < totalFrames; frame++) {
-            const time = frame / fps;
-            const context: FrameContext = {
-                time,
-                frame,
-                duration,
-                width,
-                height
-            };
+        try {
+            page = await browser.newPage();
+            await page.setViewportSize({ width, height });
 
-            // Execute render function
-            await page.evaluate((ctx: FrameContext) => {
-                (window as unknown as { updateFrame: (ctx: FrameContext) => void }).updateFrame(ctx);
-            }, context);
+            // Create HTML template
+            const htmlTemplate = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <style>
+                body { margin: 0; padding: 0; width: ${width}px; height: ${height}px; overflow: hidden; }
+              </style>
+            </head>
+            <body>
+              <script>
+                const renderFunction = ${render};
+                window.updateFrame = (context) => {
+                  const html = renderFunction(context);
+                  document.body.innerHTML = html;
+                };
+              </script>
+            </body>
+          </html>
+        `;
 
-            // Capture screenshot
-            const framePath = path.join(
-                framesDir,
-                `frame_${frame.toString().padStart(6, "0")}.png`
-            );
-            await page.screenshot({ path: framePath, fullPage: false });
-            framePaths.push(framePath);
+            await page.setContent(htmlTemplate);
+
+            // Render frames
+            for (let frame = 0; frame < totalFrames; frame++) {
+                const time = frame / fps;
+                const context: FrameContext = {
+                    time,
+                    frame,
+                    duration,
+                    width,
+                    height
+                };
+
+                // Execute render function
+                await page.evaluate((ctx: FrameContext) => {
+                    (window as unknown as { updateFrame: (ctx: FrameContext) => void }).updateFrame(ctx);
+                }, context);
+
+                // Capture screenshot
+                const framePath = path.join(
+                    framesDir,
+                    `frame_${frame.toString().padStart(6, "0")}.png`
+                );
+                await page.screenshot({ path: framePath, fullPage: false });
+                framePaths.push(framePath);
+            }
+        } finally {
+            // Always close browser and page, even if there's an error
+            try {
+                if (page) {
+                    await page.close();
+                }
+            } catch (err) {
+                console.warn("Failed to close page:", err);
+            }
+            
+            try {
+                await browser.close();
+            } catch (err) {
+                console.warn("Failed to close browser:", err);
+            }
         }
-
-        await browser.close();
 
         // Generate video with FFmpeg
         await new Promise<void>((resolve, reject) => {
