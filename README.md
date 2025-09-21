@@ -226,17 +226,39 @@ Update `BASE_URL` in your environment variables to your production domain.
 
 ### Docker
 
-```dockerfile
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-RUN npx playwright install chromium
-RUN apk add --no-cache ffmpeg
-COPY . .
-RUN npm run build
-EXPOSE 3000
-CMD ["npm", "start"]
+#### Quick Start
+```bash
+# Build and run with script
+./scripts/docker-run.sh
+
+# Or manually
+docker build -t video-renderer .
+docker run -p 3000:3000 -e BASE_URL=http://localhost:3000 video-renderer
+```
+
+#### Docker Compose
+```bash
+# Basic setup
+docker-compose up -d
+
+# With Nginx proxy
+docker-compose --profile with-proxy up -d
+```
+
+#### Production Setup
+```bash
+# Build for production
+docker build -t video-renderer:prod .
+
+# Run with environment variables
+docker run -d \
+  --name video-renderer-prod \
+  -p 3000:3000 \
+  -e NODE_ENV=production \
+  -e BASE_URL=https://your-domain.com \
+  -v ./temp:/app/temp \
+  --restart unless-stopped \
+  video-renderer:prod
 ```
 
 ## 🤝 Contributing
