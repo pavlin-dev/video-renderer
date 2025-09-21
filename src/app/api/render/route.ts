@@ -93,8 +93,26 @@ export async function POST(request: NextRequest) {
         await mkdir(tempDir, { recursive: true });
         await mkdir(framesDir, { recursive: true });
 
-        // Launch browser with Playwright's auto-detected Chromium
+        // Launch browser with fallback executable paths for different architectures
+        const possiblePaths = [
+            '/home/node/.cache/ms-playwright/chromium-1187/chrome-linux/chrome',  // x64
+            '/home/node/.cache/ms-playwright/chromium-1187/chrome-linux/chromium', // fallback
+        ];
+        
+        let executablePath: string | undefined = undefined;
+        for (const path of possiblePaths) {
+            try {
+                if (fs.existsSync(path)) {
+                    executablePath = path;
+                    break;
+                }
+            } catch {
+                // Continue to next path
+            }
+        }
+
         const browser = await chromium.launch({
+            executablePath,
             headless: true,
             args: [
                 '--no-sandbox',
