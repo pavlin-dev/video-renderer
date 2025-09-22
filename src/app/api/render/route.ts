@@ -23,6 +23,8 @@ interface RenderResult {
     waitUntil?: () => boolean; // function that returns true when ready to render
 }
 
+type RenderFunction = (ctx: FrameContext) => RenderResult | Promise<RenderResult> | string;
+
 export async function POST(request: NextRequest) {
     try {
         // Check content type
@@ -240,7 +242,7 @@ export async function POST(request: NextRequest) {
                         // Use vm module for safe evaluation of render function
                         const script = new vm.Script(`(${escapedRender})`);
                         const renderFunction = script.runInNewContext({});
-                        const result = renderFunction(context);
+                        const result = await Promise.resolve(renderFunction(context));
                         
                         // Support both old string format and new object format
                         if (typeof result === 'string') {
@@ -279,10 +281,35 @@ export async function POST(request: NextRequest) {
                     // Wait based on waitUntil function
                     if (renderResultRaw.waitUntilString) {
                         try {
-                            await page.waitForFunction(renderResultRaw.waitUntilString, { timeout: 5000 });
-                        } catch {
+                            console.log('Waiting for waitUntil condition...');
+                            await page.waitForFunction(renderResultRaw.waitUntilString, { timeout: 10000 });
+                            console.log('waitUntil condition met!');
+                            
+                            // Debug: Check what's actually in the page after condition is met
+                            const debugInfo = await page.evaluate(() => {
+                                return {
+                                    dataReady: document.body.getAttribute('data-ready'),
+                                    boxElement: !!document.getElementById('box'),
+                                    boxStyle: document.getElementById('box')?.style.background || 'none',
+                                    boxComputedStyle: window.getComputedStyle(document.getElementById('box') || document.body).background
+                                };
+                            });
+                            console.log('Success debug info:', debugInfo);
+                        } catch (error) {
                             // If timeout, continue anyway
                             console.warn('waitUntil function timeout, continuing anyway');
+                            console.warn('Error:', error);
+                            
+                            // Debug: Check what's actually in the page
+                            const debugInfo = await page.evaluate(() => {
+                                return {
+                                    bodyContent: document.body.innerHTML.substring(0, 500),
+                                    dataReady: document.body.getAttribute('data-ready'),
+                                    boxElement: !!document.getElementById('box'),
+                                    boxStyle: document.getElementById('box')?.style.background || 'none'
+                                };
+                            });
+                            console.log('Debug info:', debugInfo);
                         }
                     }
 
