@@ -187,13 +187,6 @@ export async function POST(request: NextRequest) {
               </style>
             </head>
             <body>
-              <script>
-                const renderFunction = ${render};
-                window.updateFrame = (context) => {
-                  const html = renderFunction(context);
-                  document.body.innerHTML = html;
-                };
-              </script>
             </body>
           </html>
         `;
@@ -219,10 +212,25 @@ export async function POST(request: NextRequest) {
                         height
                     };
 
-                    // Execute render function
-                    await page.evaluate((ctx: FrameContext) => {
-                        (window as unknown as { updateFrame: (ctx: FrameContext) => void }).updateFrame(ctx);
-                    }, context);
+                    // Execute render function directly by evaluating it safely
+                    await page.evaluate((params: { ctx: FrameContext, renderFunctionString: string }) => {
+                        // Create a safe evaluation environment
+                        const evalFunc = eval('(' + params.renderFunctionString + ')');
+                        const html = evalFunc(params.ctx);
+                        document.body.innerHTML = html;
+                        
+                        // Wait for any scripts in the HTML to execute
+                        const scripts = document.querySelectorAll('script');
+                        scripts.forEach(script => {
+                            if (script.textContent) {
+                                try {
+                                    eval(script.textContent);
+                                } catch (e) {
+                                    console.error('Script execution error:', e);
+                                }
+                            }
+                        });
+                    }, { ctx: context, renderFunctionString: render });
 
                     // Capture screenshot with optimized settings
                     const framePath = path.join(
