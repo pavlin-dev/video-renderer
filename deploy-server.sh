@@ -20,7 +20,9 @@ docker run -d \
   --memory-swap=1500m \
   --oom-kill-disable=false \
   -p 3000:3000 \
-  -e BASE_URL=${BASE_URL:-http://localhost:3000} \
+  -e NODE_ENV=production \
+  -e BASE_URL=${BASE_URL:-https://video-renderer.pavlin.dev} \
+  --restart unless-stopped \
   video-renderer:memory-optimized
 
 # Wait for health check
