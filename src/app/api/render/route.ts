@@ -153,11 +153,15 @@ export async function POST(request: NextRequest) {
             '--no-service-autorun',
             '--password-store=basic',
             '--use-mock-keychain',
-            // Performance optimizations
+            // Performance optimizations for 2GB RAM server
             '--enable-aggressive-domstorage-flushing',
             '--enable-low-end-device-mode',
-            '--max_old_space_size=2048', // Reduced memory limit
-            '--memory-pressure-off'
+            '--max_old_space_size=512',  // Very low memory limit for 2GB server
+            '--memory-pressure-off',
+            '--aggressive-cache-discard',
+            '--disable-background-media-suspend',
+            '--disable-features=VizDisplayCompositor',
+            '--force-device-scale-factor=1'
         ];
 
         const browser = await chromium.launch({
@@ -200,8 +204,8 @@ export async function POST(request: NextRequest) {
             page.setDefaultTimeout(5000); // Shorter timeout
             page.setDefaultNavigationTimeout(5000);
 
-            // Render frames with optimized batching
-            const batchSize = 5; // Process frames in small batches to reduce memory pressure
+            // Render frames with very small batches for 2GB RAM server
+            const batchSize = 2; // Very small batches to minimize memory usage
             for (let batchStart = 0; batchStart < totalFrames; batchStart += batchSize) {
                 const batchEnd = Math.min(batchStart + batchSize, totalFrames);
                 
@@ -234,9 +238,13 @@ export async function POST(request: NextRequest) {
                     framePaths.push(framePath);
                 }
 
-                // Small delay between batches to prevent overwhelming the system
+                // Force garbage collection and delay between batches for memory management
                 if (batchEnd < totalFrames) {
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    // Force garbage collection to free memory
+                    if (global.gc) {
+                        global.gc();
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 50)); // Longer delay for memory cleanup
                 }
             }
         } finally {
@@ -270,21 +278,24 @@ export async function POST(request: NextRequest) {
                         ...baseOptions,
                         "-preset ultrafast", // Fastest encoding
                         "-crf 28",           // Lower quality, smaller file
-                        "-threads 2"         // Limit CPU threads
+                        "-threads 1",        // Minimal threads for 2GB RAM
+                        "-bufsize 1M"        // Low buffer size
                     ];
                 case 'medium':
                     return [
                         ...baseOptions,
                         "-preset fast",      // Fast encoding
                         "-crf 23",          // Balanced quality
-                        "-threads 4"        // Moderate CPU usage
+                        "-threads 2",       // Reduced threads for low memory
+                        "-bufsize 2M"       // Moderate buffer size
                     ];
                 case 'high':
                     return [
                         ...baseOptions,
                         "-preset medium",    // Better quality
                         "-crf 18",          // High quality
-                        "-threads 6"        // More CPU for quality
+                        "-threads 3",       // Limited threads for memory
+                        "-bufsize 4M"       // Higher buffer for quality
                     ];
                 default:
                     return baseOptions;

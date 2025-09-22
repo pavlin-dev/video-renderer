@@ -72,5 +72,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 # Use dumb-init for proper signal handling
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the application
-CMD ["npm", "start"]
+# Start the application with memory optimization for 2GB RAM server
+CMD ["node", "--expose-gc", "--max-old-space-size=1024", "node_modules/.bin/next", "start"]
