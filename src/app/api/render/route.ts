@@ -231,16 +231,8 @@ export async function POST(request: NextRequest) {
                         console.log('Contains hsl:', render.includes('hsl'));
                         console.log('=== END DEBUG ===');
                         
-                        // Replace nested template literals to avoid syntax conflicts
-                        const escapedRender = render.replace(/`([^`]*\$\{[^}]*\}[^`]*)`/g, (match, content) => {
-                            // Convert template literals to string concatenation
-                            return '`' + content.replace(/\$\{([^}]+)\}/g, '` + ($1) + `') + '`';
-                        });
-                        
-                        console.log('Escaped render:', escapedRender);
-                        
-                        // Use vm module for safe evaluation of render function
-                        const script = new vm.Script(`(${escapedRender})`);
+                        // Use vm module for safe evaluation of render function (without template literal escaping)
+                        const script = new vm.Script(`(${render})`);
                         const renderFunction = script.runInNewContext({});
                         const result = await Promise.resolve(renderFunction(context));
                         
@@ -261,22 +253,34 @@ export async function POST(request: NextRequest) {
                         throw new Error('Failed to evaluate render function: ' + (error instanceof Error ? error.message : 'Unknown error'));
                     }
 
-                    // Set the HTML content
+                    // Set the HTML content first
                     await page.evaluate((html: string) => {
-                        document.body.innerHTML = html;
+                        // Extract HTML and script parts
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(html, 'text/html');
+                        const divElement = doc.querySelector('div');
                         
-                        // Wait for any scripts in the HTML to execute
-                        const scripts = document.querySelectorAll('script');
-                        scripts.forEach(script => {
-                            if (script.textContent) {
-                                try {
-                                    eval(script.textContent);
-                                } catch (e) {
-                                    console.error('Script execution error:', e);
-                                }
-                            }
-                        });
+                        // Set the div content
+                        if (divElement) {
+                            document.body.appendChild(divElement);
+                        }
                     }, renderResultRaw.html);
+
+                    // Execute the script using page.evaluate for proper async handling
+                    const scriptContent = await page.evaluate((html: string) => {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(html, 'text/html');
+                        const scriptElement = doc.querySelector('script');
+                        return scriptElement ? scriptElement.textContent : null;
+                    }, renderResultRaw.html);
+
+                    if (scriptContent) {
+                        console.log('Executing script content...');
+                        await page.evaluate((script: string) => {
+                            console.log('About to eval script:', script.substring(0, 100) + '...');
+                            return eval(script);
+                        }, scriptContent);
+                    }
 
                     // Wait based on waitUntil function
                     if (renderResultRaw.waitUntilString) {

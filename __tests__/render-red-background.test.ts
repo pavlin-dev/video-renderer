@@ -1,4 +1,6 @@
 import { chromium, Browser, Page } from 'playwright';
+import { spawn } from 'child_process';
+import * as fs from 'fs';
 
 interface RenderApiResponse {
   success: boolean;
@@ -61,7 +63,7 @@ describe('Render API - Red Background Test', () => {
     }`;
 
     // Call the render API
-    const response = await fetch('http://localhost:3001/api/render', {
+    const response = await fetch('http://localhost:3000/api/render', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -84,7 +86,7 @@ describe('Render API - Red Background Test', () => {
     
     console.log('✅ Video generated:', result.video?.url);
     
-    // Now analyze the first frame to check if it's red
+    // Now analyze the first frame to check if it's red using ffmpeg
     const videoPath = result.video?.path;
     expect(videoPath).toBeDefined();
     
@@ -92,26 +94,52 @@ describe('Render API - Red Background Test', () => {
       throw new Error('Video path is undefined');
     }
     
-    // Extract first frame using playwright
+    // Extract first frame using ffmpeg  
+    const frameOutputPath = `/tmp/frame_analysis_${Date.now()}.png`;
+    
+    // Use ffmpeg to extract first frame
+    await new Promise<void>((resolve, reject) => {
+      const ffmpeg = spawn('ffmpeg', [
+        '-y',
+        '-i', videoPath,
+        '-vframes', '1',
+        '-f', 'image2',
+        frameOutputPath
+      ]);
+      
+      ffmpeg.on('close', (code: number) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`ffmpeg failed with code ${code}`));
+        }
+      });
+      
+      ffmpeg.on('error', reject);
+    });
+    
+    // Analyze extracted frame using playwright
     const browser: Browser = await chromium.launch({ headless: true });
     const page: Page = await browser.newPage();
     
     try {
-      // Create a simple video player page using HTTP URL instead of file://
+      // Read the extracted frame as base64
+      const frameData = fs.readFileSync(frameOutputPath);
+      const frameBase64 = frameData.toString('base64');
+      
+      // Load the extracted frame as image using data URL
       await page.setContent(`
         <html>
           <body style="margin:0; padding:0;">
-            <video id="video" width="1080" height="1920" style="display:block;" crossorigin="anonymous">
-              <source src="${result.video?.url}" type="video/mp4">
-            </video>
+            <img id="frame" src="data:image/png;base64,${frameBase64}" width="1080" height="1920" style="display:block;">
             <canvas id="canvas" width="1080" height="1920" style="display:none;"></canvas>
           </body>
         </html>
       `);
 
-      // Wait for video to load and capture first frame
+      // Wait for image to load and analyze
       const colorAnalysis: ColorAnalysis = await page.evaluate(async (): Promise<ColorAnalysis> => {
-        const video = document.getElementById('video') as HTMLVideoElement;
+        const img = document.getElementById('frame') as HTMLImageElement;
         const canvas = document.getElementById('canvas') as HTMLCanvasElement;
         const ctx = canvas.getContext('2d');
         
@@ -119,28 +147,18 @@ describe('Render API - Red Background Test', () => {
           throw new Error('Could not get canvas context');
         }
         
-        // Wait for video to load
+        // Wait for image to load
         await new Promise<void>((resolve, reject) => {
-          video.addEventListener('loadeddata', () => resolve());
-          video.addEventListener('error', () => reject(new Error('Video load error')));
-          video.load();
-          
-          // Timeout after 10 seconds
-          setTimeout(() => reject(new Error('Video load timeout')), 10000);
+          if (img.complete) {
+            resolve();
+          } else {
+            img.addEventListener('load', () => resolve());
+            img.addEventListener('error', () => reject(new Error('Image load error')));
+          }
         });
         
-        // Set to first frame
-        video.currentTime = 0;
-        await new Promise<void>((resolve, reject) => {
-          video.addEventListener('seeked', () => resolve());
-          video.addEventListener('error', () => reject(new Error('Video seek error')));
-          
-          // Timeout after 5 seconds
-          setTimeout(() => reject(new Error('Video seek timeout')), 5000);
-        });
-        
-        // Draw video frame to canvas
-        ctx.drawImage(video, 0, 0, 1080, 1920);
+        // Draw image to canvas
+        ctx.drawImage(img, 0, 0, 1080, 1920);
         
         // Sample pixels from center area to check if they're red
         const imageData = ctx.getImageData(540, 960, 100, 100); // 100x100 sample from center
@@ -202,8 +220,15 @@ describe('Render API - Red Background Test', () => {
       
       console.log('🎉 SUCCESS: Background is red!');
       
+      // Cleanup
+      fs.unlinkSync(frameOutputPath);
+      
     } catch (error) {
       await browser.close();
+      // Cleanup on error
+      try {
+        fs.unlinkSync(frameOutputPath);
+      } catch {}
       throw error;
     }
   }, 30000); // 30 second timeout for the entire test

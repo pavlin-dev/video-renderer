@@ -1,6 +1,6 @@
 import { chromium, Browser, Page } from 'playwright';
 
-describe('Render API - Single Frame Test', () => {
+describe('Async Red Test', () => {
   let browser: Browser;
   let page: Page;
 
@@ -13,18 +13,29 @@ describe('Render API - Single Frame Test', () => {
     await browser.close();
   });
 
-  test('should render red background in single frame after async delay', async () => {
-    console.log('🧪 Testing single frame red background render...');
+  test('should render red background after async delay', async () => {
+    console.log('🧪 Testing async red background...');
     
     const renderFunction = `({ time }) => {
       return {
         html: "<div id='box' style='width:1080px;height:1920px;background:#000'></div>" +
               "<script>" +
               "(async () => {" +
+                "console.log('Async script starting...');" +
                 "const box = document.getElementById('box');" +
-                "await new Promise(res => setTimeout(res, 1000));" +
+                "console.log('Box element found:', !!box);" +
+                "await new Promise(res => {" +
+                  "console.log('Starting 500ms delay...');" +
+                  "setTimeout(() => {" +
+                    "console.log('Delay completed');" +
+                    "res();" +
+                  "}, 500);" +
+                "});" +
+                "console.log('Setting background to red...');" +
                 "box.style.background = 'red';" +
+                "console.log('Setting data-ready attribute...');" +
                 "document.body.setAttribute('data-ready','1');" +
+                "console.log('Async script completed!');" +
               "})();" +
               "</script>",
         waitUntil: () => {
@@ -33,10 +44,8 @@ describe('Render API - Single Frame Test', () => {
       };
     }`;
 
-    // Set page size
     await page.setViewportSize({ width: 1080, height: 1920 });
 
-    // Create HTML template (similar to render API)
     const htmlTemplate = `
       <!DOCTYPE html>
       <html>
@@ -52,9 +61,9 @@ describe('Render API - Single Frame Test', () => {
 
     await page.setContent(htmlTemplate);
 
-    // Execute render function directly in page (simulating server-side execution)
+    // Execute render function
     const renderResult = await page.evaluate((renderFunctionString: string) => {
-      const evalFunc = eval(`(${renderFunctionString})`);
+      const evalFunc = eval('(' + renderFunctionString + ')');
       const result = evalFunc({ time: 0.1, frame: 1, duration: 1, width: 1080, height: 1920 });
       
       if (typeof result === 'string') {
@@ -65,17 +74,23 @@ describe('Render API - Single Frame Test', () => {
       return { html: result.html, waitUntilString };
     }, renderFunction);
 
+    console.log('Render result HTML:', renderResult.html);
+
     // Set the HTML content first
     await page.evaluate((html: string) => {
       // Extract HTML and script parts
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
       const divElement = doc.querySelector('div');
+      const scriptElement = doc.querySelector('script');
       
       // Set the div content
       if (divElement) {
         document.body.appendChild(divElement);
       }
+      
+      // Return script content for separate execution
+      return scriptElement ? scriptElement.textContent : null;
     }, renderResult.html);
 
     // Execute the script using page.evaluate for proper async handling
@@ -94,14 +109,18 @@ describe('Render API - Single Frame Test', () => {
       }, scriptContent);
     }
 
-    // Wait for async operation to complete if waitUntil is specified
+    // Wait for async operation if specified
     if (renderResult.waitUntilString) {
-      console.log('Waiting for async operation to complete...');
-      await page.waitForFunction(renderResult.waitUntilString, { timeout: 10000 });
-      console.log('Async operation completed!');
+      console.log('Waiting for async operation with waitUntil...');
+      await page.waitForFunction(renderResult.waitUntilString, { timeout: 5000 });
+      console.log('WaitUntil condition met!');
+    } else {
+      // If no waitUntil, wait a bit for async operation
+      console.log('No waitUntil specified, waiting 2 seconds...');
+      await page.waitForTimeout(2000);
     }
 
-    // Check the background color
+    // Check the result
     const colorInfo = await page.evaluate(() => {
       const box = document.getElementById('box');
       if (!box) return { found: false };
@@ -118,10 +137,10 @@ describe('Render API - Single Frame Test', () => {
       };
     });
 
-    console.log('Color info:', colorInfo);
+    console.log('Final color info:', colorInfo);
 
-    // Take screenshot for visual verification
-    const screenshotPath = `/tmp/test-frame-${Date.now()}.png`;
+    // Take screenshot
+    const screenshotPath = `/tmp/async-test-${Date.now()}.png`;
     await page.screenshot({ path: screenshotPath, fullPage: true });
     console.log('Screenshot saved to:', screenshotPath);
 
@@ -130,6 +149,6 @@ describe('Render API - Single Frame Test', () => {
     expect(colorInfo.dataReady).toBe('1');
     expect(colorInfo.inlineStyle).toBe('red');
     
-    console.log('🎉 SUCCESS: Single frame test passed!');
-  }, 20000);
+    console.log('🎉 SUCCESS: Async red test passed!');
+  }, 15000);
 });
