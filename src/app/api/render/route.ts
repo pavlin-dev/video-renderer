@@ -248,19 +248,36 @@ export async function POST(request: NextRequest) {
                 }
             }
         } finally {
-            // Always close browser and page, even if there's an error
+            // Aggressive cleanup to prevent CPU hanging
             try {
                 if (page) {
                     await page.close();
+                    console.log("✓ Page closed");
                 }
             } catch (err) {
                 console.warn("Failed to close page:", err);
             }
             
             try {
+                // Force browser context cleanup
+                const contexts = browser.contexts();
+                for (const context of contexts) {
+                    await context.close();
+                }
+                
                 await browser.close();
+                console.log("✓ Browser closed");
+                
+                // Small delay to ensure cleanup
+                await new Promise(resolve => setTimeout(resolve, 100));
             } catch (err) {
                 console.warn("Failed to close browser:", err);
+            }
+            
+            // Force garbage collection after browser cleanup
+            if (global.gc) {
+                global.gc();
+                console.log("✓ Garbage collection triggered");
             }
         }
 
@@ -302,13 +319,39 @@ export async function POST(request: NextRequest) {
             }
         };
 
+        // FFmpeg with timeout and process cleanup
         await new Promise<void>((resolve, reject) => {
+            let isResolved = false;
+            
+            // Set timeout for FFmpeg (based on video length)
+            const timeoutMs = Math.max(30000, duration * 10000); // At least 30s, or 10s per second of video
+            const timeoutId = setTimeout(() => {
+                if (!isResolved) {
+                    isResolved = true;
+                    reject(new Error(`FFmpeg timeout after ${timeoutMs}ms`));
+                }
+            }, timeoutMs);
+            
             const command = ffmpeg(path.join(framesDir, "frame_%06d.png"))
                 .inputFPS(fps)
                 .outputOptions(getFFmpegOptions(videoQuality))
                 .output(outputPath)
-                .on("end", () => resolve())
-                .on("error", reject);
+                .on("end", () => {
+                    if (!isResolved) {
+                        isResolved = true;
+                        clearTimeout(timeoutId);
+                        console.log("✓ FFmpeg encoding completed");
+                        resolve();
+                    }
+                })
+                .on("error", (err) => {
+                    if (!isResolved) {
+                        isResolved = true;
+                        clearTimeout(timeoutId);
+                        console.error("✗ FFmpeg error:", err);
+                        reject(err);
+                    }
+                });
 
             command.run();
         });
@@ -340,6 +383,13 @@ export async function POST(request: NextRequest) {
         const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
         const videoUrl = `${baseUrl}/api/video/${videoFilename}`;
 
+        // Final cleanup to ensure no hanging processes
+        if (global.gc) {
+            global.gc();
+        }
+        
+        console.log("🎬 Video rendering completed successfully");
+        
         return NextResponse.json({
             success: true,
             video: {
@@ -355,6 +405,12 @@ export async function POST(request: NextRequest) {
         });
     } catch (error) {
         console.error("Render error:", error);
+        
+        // Cleanup on error too
+        if (global.gc) {
+            global.gc();
+        }
+        
         return NextResponse.json(
             {
                 error: "Failed to render video",
