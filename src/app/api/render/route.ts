@@ -217,21 +217,37 @@ export async function POST(request: NextRequest) {
                         height
                     };
 
-                    // Execute render function and get result with waitUntil info
-                    const renderResultRaw = await page.evaluate((params: { ctx: FrameContext, renderFunctionString: string }) => {
-                        // Create a safe evaluation environment
-                        const evalFunc = eval('(' + params.renderFunctionString + ')');
-                        const result = evalFunc(params.ctx);
+                    // Execute render function on server side to avoid browser evaluation issues
+                    let renderResultRaw: { html: string, waitUntilString: string | null };
+                    try {
+                        // Debug: Log the render function string
+                        console.log('=== RENDER FUNCTION DEBUG ===');
+                        console.log('Raw render string length:', render.length);
+                        console.log('First 200 chars:', render.substring(0, 200));
+                        console.log('Last 200 chars:', render.substring(render.length - 200));
+                        console.log('Contains hsl:', render.includes('hsl'));
+                        console.log('=== END DEBUG ===');
+                        
+                        // Evaluate render function in Node.js context
+                        const renderFunction = eval(`(${render})`);
+                        const result = renderFunction(context);
                         
                         // Support both old string format and new object format
                         if (typeof result === 'string') {
-                            return { html: result, waitUntilString: null };
+                            renderResultRaw = { html: result, waitUntilString: null };
+                        } else {
+                            // Convert waitUntil function to string for serialization
+                            const waitUntilString = result.waitUntil ? result.waitUntil.toString() : null;
+                            renderResultRaw = { html: result.html, waitUntilString };
                         }
-                        
-                        // Convert waitUntil function to string for serialization
-                        const waitUntilString = result.waitUntil ? result.waitUntil.toString() : null;
-                        return { html: result.html, waitUntilString };
-                    }, { ctx: context, renderFunctionString: render });
+                    } catch (error) {
+                        console.error('Render function evaluation error:', error);
+                        console.error('Error details:', {
+                            message: error instanceof Error ? error.message : 'Unknown error',
+                            stack: error instanceof Error ? error.stack : undefined
+                        });
+                        throw new Error('Failed to evaluate render function: ' + (error instanceof Error ? error.message : 'Unknown error'));
+                    }
 
                     // Set the HTML content
                     await page.evaluate((html: string) => {
