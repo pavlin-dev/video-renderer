@@ -3,6 +3,44 @@ import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
+/**
+ * Parse time string to seconds
+ * Supports formats:
+ * - Seconds: "2.5", "10"
+ * - Minutes:Seconds: "1:30", "2:45"
+ * - Hours:Minutes:Seconds: "1:23:45"
+ */
+function parseTimeToSeconds(timeStr: string): number | null {
+  if (!timeStr) return null;
+  
+  // Try parsing as simple number (seconds)
+  const asNumber = parseFloat(timeStr);
+  if (!isNaN(asNumber)) {
+    return asNumber;
+  }
+  
+  // Try parsing as time format (MM:SS or HH:MM:SS)
+  const timeParts = timeStr.split(':');
+  if (timeParts.length === 2) {
+    // MM:SS format
+    const minutes = parseInt(timeParts[0], 10);
+    const seconds = parseFloat(timeParts[1]);
+    if (!isNaN(minutes) && !isNaN(seconds)) {
+      return minutes * 60 + seconds;
+    }
+  } else if (timeParts.length === 3) {
+    // HH:MM:SS format
+    const hours = parseInt(timeParts[0], 10);
+    const minutes = parseInt(timeParts[1], 10);
+    const seconds = parseFloat(timeParts[2]);
+    if (!isNaN(hours) && !isNaN(minutes) && !isNaN(seconds)) {
+      return hours * 3600 + minutes * 60 + seconds;
+    }
+  }
+  
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -24,54 +62,70 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Parse and validate time parameter
-    const time = parseFloat(timeParam);
-    if (isNaN(time) || time < 0) {
+    // Parse and validate time parameter (supports multiple formats)
+    const time = parseTimeToSeconds(timeParam);
+    if (time === null || time < 0) {
       return NextResponse.json(
-        { error: 'Invalid time parameter: must be a non-negative number' },
+        { error: 'Invalid time parameter: must be a non-negative number in seconds (e.g., "2.5") or time format (e.g., "1:30", "1:23:45")' },
         { status: 400 }
       );
     }
 
-    // Validate video URL - must be a local video from our API
+    // Validate video URL format
+    let videoPath: string;
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-    if (!videoUrl.startsWith(`${baseUrl}/api/video/`)) {
-      return NextResponse.json(
-        { error: 'Invalid video URL: must be a local video from our API' },
-        { status: 400 }
-      );
-    }
-
-    // Extract filename from URL
-    const filename = videoUrl.split('/').pop();
-    if (!filename || !filename.endsWith('.mp4')) {
-      return NextResponse.json(
-        { error: 'Invalid video filename' },
-        { status: 400 }
-      );
-    }
-
-    // Security: Prevent path traversal
-    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-      return NextResponse.json(
-        { error: 'Invalid filename' },
-        { status: 400 }
-      );
-    }
-
-    const videoPath = path.join(process.cwd(), 'temp', filename);
     
-    // Check if video file exists
-    if (!fs.existsSync(videoPath)) {
-      return NextResponse.json(
-        { error: 'Video not found' },
-        { status: 404 }
-      );
+    if (videoUrl.startsWith(`${baseUrl}/api/video/`)) {
+      // Local video from our API
+      const filename = videoUrl.split('/').pop();
+      if (!filename || !filename.endsWith('.mp4')) {
+        return NextResponse.json(
+          { error: 'Invalid video filename' },
+          { status: 400 }
+        );
+      }
+
+      // Security: Prevent path traversal
+      if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+        return NextResponse.json(
+          { error: 'Invalid filename' },
+          { status: 400 }
+        );
+      }
+
+      videoPath = path.join(process.cwd(), 'temp', filename);
+      
+      // Check if local video file exists
+      if (!fs.existsSync(videoPath)) {
+        return NextResponse.json(
+          { error: 'Video not found' },
+          { status: 404 }
+        );
+      }
+    } else {
+      // External video URL - validate format
+      try {
+        const url = new URL(videoUrl);
+        if (!['http:', 'https:'].includes(url.protocol)) {
+          return NextResponse.json(
+            { error: 'Invalid video URL: only HTTP and HTTPS protocols are supported' },
+            { status: 400 }
+          );
+        }
+      } catch (error) {
+        return NextResponse.json(
+          { error: 'Invalid video URL format' },
+          { status: 400 }
+        );
+      }
+      
+      // For external URLs, use the URL directly as videoPath
+      videoPath = videoUrl;
     }
 
     // Create temporary frame file
     const tempDir = path.join(process.cwd(), 'temp');
-    const frameFilename = `frame_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.png`;
+    const frameFilename = `frame_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.png`;
     const frameOutputPath = path.join(tempDir, frameFilename);
 
     // Extract frame using ffmpeg
