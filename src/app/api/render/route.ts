@@ -4,6 +4,7 @@ import ffmpeg from "fluent-ffmpeg";
 import * as fs from "fs";
 import * as path from "path";
 import { promisify } from "util";
+import * as vm from "vm";
 
 const mkdir = promisify(fs.mkdir);
 const unlink = promisify(fs.unlink);
@@ -223,13 +224,22 @@ export async function POST(request: NextRequest) {
                         // Debug: Log the render function string
                         console.log('=== RENDER FUNCTION DEBUG ===');
                         console.log('Raw render string length:', render.length);
-                        console.log('First 200 chars:', render.substring(0, 200));
-                        console.log('Last 200 chars:', render.substring(render.length - 200));
+                        console.log('Full render function:');
+                        console.log(render);
                         console.log('Contains hsl:', render.includes('hsl'));
                         console.log('=== END DEBUG ===');
                         
-                        // Evaluate render function in Node.js context
-                        const renderFunction = eval(`(${render})`);
+                        // Replace nested template literals to avoid syntax conflicts
+                        const escapedRender = render.replace(/`([^`]*\$\{[^}]*\}[^`]*)`/g, (match, content) => {
+                            // Convert template literals to string concatenation
+                            return '`' + content.replace(/\$\{([^}]+)\}/g, '` + ($1) + `') + '`';
+                        });
+                        
+                        console.log('Escaped render:', escapedRender);
+                        
+                        // Use vm module for safe evaluation of render function
+                        const script = new vm.Script(`(${escapedRender})`);
+                        const renderFunction = script.runInNewContext({});
                         const result = renderFunction(context);
                         
                         // Support both old string format and new object format
