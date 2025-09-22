@@ -61,7 +61,7 @@ describe('Render API - Red Background Test', () => {
     }`;
 
     // Call the render API
-    const response = await fetch('http://localhost:3000/api/render', {
+    const response = await fetch('http://localhost:3001/api/render', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -97,12 +97,12 @@ describe('Render API - Red Background Test', () => {
     const page: Page = await browser.newPage();
     
     try {
-      // Create a simple video player page
+      // Create a simple video player page using HTTP URL instead of file://
       await page.setContent(`
         <html>
           <body style="margin:0; padding:0;">
-            <video id="video" width="1080" height="1920" style="display:block;">
-              <source src="file://${videoPath}" type="video/mp4">
+            <video id="video" width="1080" height="1920" style="display:block;" crossorigin="anonymous">
+              <source src="${result.video?.url}" type="video/mp4">
             </video>
             <canvas id="canvas" width="1080" height="1920" style="display:none;"></canvas>
           </body>
