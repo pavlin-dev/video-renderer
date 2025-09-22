@@ -75,6 +75,27 @@ export default function Home() {
     \${progress.toFixed(1)}% Complete
   </p>\`;
 }`
+    },
+    {
+      name: "Advanced with waitUntil",
+      code: `({time}) => {
+  return {
+    html: \`<div id="bg" style="width:100%;height:100%;background:#000;"></div>
+    <script>
+      const bg = document.getElementById('bg');
+      const hue = (time * 60) % 360;
+      bg.style.background = \`hsl(\${hue}, 70%, 45%)\`;
+      
+      // Signal when ready
+      setTimeout(() => {
+        document.body.setAttribute('data-frame-ready', '1');
+      }, 100);
+    </script>\`,
+    waitUntil: () => {
+      return document.body.getAttribute('data-frame-ready') === '1';
+    }
+  };
+}`
     }
   ];
 
@@ -164,15 +185,54 @@ export default function Home() {
               <div>
                 <h3 className="text-xl font-semibold text-gray-800 mb-3">Render Function</h3>
                 <p className="text-gray-600 mb-3">
-                  Your render function receives a context object and must return an HTML string:
+                  Your render function receives a context object and can return either HTML string or object:
                 </p>
-                <ul className="list-disc list-inside text-gray-600 space-y-1">
-                  <li><code className="bg-gray-100 px-1 rounded">time</code> - Current time in seconds</li>
-                  <li><code className="bg-gray-100 px-1 rounded">frame</code> - Current frame number</li>
-                  <li><code className="bg-gray-100 px-1 rounded">duration</code> - Total duration</li>
-                  <li><code className="bg-gray-100 px-1 rounded">width</code> - Video width</li>
-                  <li><code className="bg-gray-100 px-1 rounded">height</code> - Video height</li>
-                </ul>
+                
+                <div className="mb-4">
+                  <h4 className="text-lg font-medium text-gray-700 mb-2">Simple Format (HTML String)</h4>
+                  <div className="bg-gray-100 p-3 rounded-lg text-sm font-mono">
+                    <pre>{`({time, frame, duration, width, height}) => {
+  return \`<h1>Frame \${frame}</h1>\`;
+}`}</pre>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <h4 className="text-lg font-medium text-gray-700 mb-2">Advanced Format (Object with waitUntil)</h4>
+                  <div className="bg-gray-100 p-3 rounded-lg text-sm font-mono">
+                    <pre>{`({time}) => {
+  return {
+    html: \`<div id="content">...</div>
+           <script>
+             // Your animation code here
+             document.body.setAttribute('data-ready', '1');
+           </script>\`,
+    waitUntil: () => {
+      // Return true when ready to capture
+      return document.body.getAttribute('data-ready') === '1';
+    }
+  };
+}`}</pre>
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <h4 className="text-lg font-medium text-gray-700 mb-2">Context Parameters</h4>
+                  <ul className="list-disc list-inside text-gray-600 space-y-1">
+                    <li><code className="bg-gray-100 px-1 rounded">time</code> - Current time in seconds</li>
+                    <li><code className="bg-gray-100 px-1 rounded">frame</code> - Current frame number</li>
+                    <li><code className="bg-gray-100 px-1 rounded">duration</code> - Total duration</li>
+                    <li><code className="bg-gray-100 px-1 rounded">width</code> - Video width</li>
+                    <li><code className="bg-gray-100 px-1 rounded">height</code> - Video height</li>
+                  </ul>
+                </div>
+
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <p className="text-blue-800 text-sm">
+                    <strong>💡 Pro Tip:</strong> Use the <code>waitUntil</code> function for complex animations with videos, 
+                    async operations, or when you need to wait for specific DOM states before capturing the frame.
+                  </p>
+                </div>
               </div>
 
               <div>

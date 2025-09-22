@@ -17,6 +17,11 @@ interface FrameContext {
     height: number;
 }
 
+interface RenderResult {
+    html: string;
+    waitUntil?: () => boolean; // function that returns true when ready to render
+}
+
 export async function POST(request: NextRequest) {
     try {
         // Check content type
@@ -212,11 +217,24 @@ export async function POST(request: NextRequest) {
                         height
                     };
 
-                    // Execute render function directly by evaluating it safely
-                    await page.evaluate((params: { ctx: FrameContext, renderFunctionString: string }) => {
+                    // Execute render function and get result with waitUntil info
+                    const renderResultRaw = await page.evaluate((params: { ctx: FrameContext, renderFunctionString: string }) => {
                         // Create a safe evaluation environment
                         const evalFunc = eval('(' + params.renderFunctionString + ')');
-                        const html = evalFunc(params.ctx);
+                        const result = evalFunc(params.ctx);
+                        
+                        // Support both old string format and new object format
+                        if (typeof result === 'string') {
+                            return { html: result, waitUntilString: null };
+                        }
+                        
+                        // Convert waitUntil function to string for serialization
+                        const waitUntilString = result.waitUntil ? result.waitUntil.toString() : null;
+                        return { html: result.html, waitUntilString };
+                    }, { ctx: context, renderFunctionString: render });
+
+                    // Set the HTML content
+                    await page.evaluate((html: string) => {
                         document.body.innerHTML = html;
                         
                         // Wait for any scripts in the HTML to execute
@@ -230,7 +248,17 @@ export async function POST(request: NextRequest) {
                                 }
                             }
                         });
-                    }, { ctx: context, renderFunctionString: render });
+                    }, renderResultRaw.html);
+
+                    // Wait based on waitUntil function
+                    if (renderResultRaw.waitUntilString) {
+                        try {
+                            await page.waitForFunction(renderResultRaw.waitUntilString, { timeout: 5000 });
+                        } catch {
+                            // If timeout, continue anyway
+                            console.warn('waitUntil function timeout, continuing anyway');
+                        }
+                    }
 
                     // Capture screenshot with optimized settings
                     const framePath = path.join(
