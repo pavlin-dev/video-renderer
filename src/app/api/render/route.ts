@@ -253,8 +253,12 @@ export async function POST(request: NextRequest) {
                         throw new Error('Failed to evaluate render function: ' + (error instanceof Error ? error.message : 'Unknown error'));
                     }
 
-                    // Set the HTML content first
+                    // Clear body and set new HTML content
                     await page.evaluate((html: string) => {
+                        // Clear previous content
+                        document.body.innerHTML = '';
+                        document.body.removeAttribute('data-ready');
+                        
                         // Extract HTML and script parts
                         const parser = new DOMParser();
                         const doc = parser.parseFromString(html, 'text/html');
@@ -286,7 +290,7 @@ export async function POST(request: NextRequest) {
                     if (renderResultRaw.waitUntilString) {
                         try {
                             console.log('Waiting for waitUntil condition...');
-                            await page.waitForFunction(renderResultRaw.waitUntilString, { timeout: 10000 });
+                            await page.waitForFunction(renderResultRaw.waitUntilString, { timeout: 25000 });
                             console.log('waitUntil condition met!');
                             
                             // Debug: Check what's actually in the page after condition is met

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import crypto from 'crypto';
 
 /**
  * Parse time string to seconds
@@ -41,6 +42,64 @@ function parseTimeToSeconds(timeStr: string): number | null {
   return null;
 }
 
+/**
+ * Generate cache key for video frame
+ */
+function getCacheKey(videoUrl: string, time: number): string {
+  const hash = crypto.createHash('md5');
+  hash.update(`${videoUrl}_${time}`);
+  return hash.digest('hex');
+}
+
+/**
+ * Get cached frame if exists
+ */
+function getCachedFrame(cacheKey: string): Buffer | null {
+  try {
+    const tempDir = path.join(process.cwd(), 'temp');
+    const cacheDir = path.join(tempDir, 'frame_cache');
+    const cachedPath = path.join(cacheDir, `${cacheKey}.png`);
+    
+    if (fs.existsSync(cachedPath)) {
+      const stats = fs.statSync(cachedPath);
+      const now = Date.now();
+      const cacheAge = now - stats.mtime.getTime();
+      
+      // Cache valid for 1 hour
+      if (cacheAge < 60 * 60 * 1000) {
+        return fs.readFileSync(cachedPath);
+      } else {
+        // Remove expired cache
+        fs.unlinkSync(cachedPath);
+      }
+    }
+  } catch (error) {
+    console.warn('Cache read error:', error);
+  }
+  
+  return null;
+}
+
+/**
+ * Save frame to cache
+ */
+function setCachedFrame(cacheKey: string, frameBuffer: Buffer): void {
+  try {
+    const tempDir = path.join(process.cwd(), 'temp');
+    const cacheDir = path.join(tempDir, 'frame_cache');
+    
+    // Ensure cache directory exists
+    if (!fs.existsSync(cacheDir)) {
+      fs.mkdirSync(cacheDir, { recursive: true });
+    }
+    
+    const cachedPath = path.join(cacheDir, `${cacheKey}.png`);
+    fs.writeFileSync(cachedPath, frameBuffer);
+  } catch (error) {
+    console.warn('Cache write error:', error);
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -69,6 +128,23 @@ export async function GET(request: NextRequest) {
         { error: 'Invalid time parameter: must be a non-negative number in seconds (e.g., "2.5") or time format (e.g., "1:30", "1:23:45")' },
         { status: 400 }
       );
+    }
+
+    // Check cache first
+    const cacheKey = getCacheKey(videoUrl, time);
+    const cachedFrame = getCachedFrame(cacheKey);
+    if (cachedFrame) {
+      console.log(`Cache hit for ${videoUrl} at ${time}s`);
+      return new NextResponse(cachedFrame, {
+        headers: {
+          'Content-Type': 'image/png',
+          'Content-Length': cachedFrame.length.toString(),
+          'Cache-Control': 'public, max-age=3600',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        },
+      });
     }
 
     // Validate video URL format
@@ -171,6 +247,9 @@ export async function GET(request: NextRequest) {
 
     // Read the frame file
     const frameBuffer = fs.readFileSync(frameOutputPath);
+
+    // Save to cache
+    setCachedFrame(cacheKey, frameBuffer);
 
     // Clean up temporary frame file
     try {
