@@ -286,7 +286,60 @@ export async function POST(request: NextRequest) {
                         }, scriptContent);
                     }
 
-                    // Wait based on waitUntil function
+                    // Auto-detect images and wait for them to load
+                    const hasImages = await page.evaluate(() => {
+                        const imgs = document.querySelectorAll('img');
+                        return imgs.length > 0;
+                    });
+
+                    if (hasImages) {
+                        try {
+                            console.log('Detected images, waiting for them to load...');
+                            // Wait for all images to be loaded or errored
+                            await page.evaluate(() => {
+                                return new Promise<void>((resolve) => {
+                                    const imgs = Array.from(document.querySelectorAll('img'));
+                                    if (imgs.length === 0) {
+                                        resolve();
+                                        return;
+                                    }
+                                    
+                                    let loaded = 0;
+                                    const total = imgs.length;
+                                    
+                                    const checkComplete = () => {
+                                        loaded++;
+                                        if (loaded >= total) {
+                                            resolve();
+                                        }
+                                    };
+                                    
+                                    imgs.forEach(img => {
+                                        if (img.complete) {
+                                            checkComplete();
+                                        } else {
+                                            img.addEventListener('load', checkComplete, { once: true });
+                                            img.addEventListener('error', checkComplete, { once: true });
+                                        }
+                                    });
+                                });
+                            });
+                            console.log('All images loaded!');
+                        } catch (error) {
+                            console.warn('Image loading timeout:', error);
+                        }
+
+                        // Always wait for network idle when images are present
+                        try {
+                            console.log('Waiting for network idle...');
+                            await page.waitForLoadState('networkidle', { timeout: 15000 });
+                            console.log('Network idle!');
+                        } catch (error) {
+                            console.warn('Network idle timeout:', error);
+                        }
+                    }
+
+                    // Wait based on waitUntil function (if provided)
                     if (renderResultRaw.waitUntilString) {
                         try {
                             console.log('Waiting for waitUntil condition...');
