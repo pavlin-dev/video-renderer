@@ -233,7 +233,7 @@ export async function POST(request: NextRequest) {
                         
                         // Use vm module for safe evaluation of render function (without template literal escaping)
                         const script = new vm.Script(`(${render})`);
-                        const renderFunction = script.runInNewContext({});
+                        const renderFunction = script.runInNewContext({ fetch });
                         const result = await Promise.resolve(renderFunction(context));
                         
                         // Support both old string format and new object format
