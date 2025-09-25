@@ -51,43 +51,57 @@ class RenderTaskManager {
         };
         
         this.tasks.set(taskId, task);
+        console.log(`✓ Task created: ${taskId}, total tasks in map: ${this.tasks.size}`);
         return taskId;
     }
 
     getTask(taskId: string): RenderTask | undefined {
+        console.log(`Getting task: ${taskId}, total tasks in map: ${this.tasks.size}`);
         return this.tasks.get(taskId);
     }
 
     updateTaskStatus(taskId: string, status: RenderTask['status'], progress?: number): void {
         const task = this.tasks.get(taskId);
         if (task) {
+            console.log(`Updating task ${taskId}: status=${status}, progress=${progress}`);
             task.status = status;
             task.updatedAt = new Date();
             if (progress !== undefined) {
                 task.progress = progress;
             }
+        } else {
+            console.error(`Task ${taskId} not found when updating status`);
         }
     }
 
     updateTaskProgress(taskId: string, progress: number): void {
         const task = this.tasks.get(taskId);
         if (task) {
-            task.progress = Math.min(100, Math.max(0, progress));
+            const newProgress = Math.min(100, Math.max(0, progress));
+            console.log(`Updating progress for task ${taskId}: ${task.progress}% -> ${newProgress}%`);
+            task.progress = newProgress;
             task.updatedAt = new Date();
+        } else {
+            console.error(`Task ${taskId} not found when updating progress`);
         }
     }
 
     setTaskResult(taskId: string, result: RenderTask['result']): void {
         const task = this.tasks.get(taskId);
         if (task) {
+            console.log(`Setting result for task ${taskId}, success: ${result?.success}`);
             task.result = result;
             task.status = result?.success ? 'completed' : 'failed';
             task.progress = 100;
             task.updatedAt = new Date();
+            console.log(`Task ${taskId} updated: status=${task.status}, progress=${task.progress}`);
+        } else {
+            console.error(`Task ${taskId} not found when setting result`);
         }
     }
 
     getAllTasks(): RenderTask[] {
+        console.log(`Getting all tasks, total tasks in map: ${this.tasks.size}`);
         return Array.from(this.tasks.values());
     }
 
@@ -101,4 +115,11 @@ class RenderTaskManager {
     }
 }
 
-export const renderTaskManager = new RenderTaskManager();
+// Use globalThis to ensure singleton instance persists across Next.js module reloads
+const globalForTaskManager = globalThis as unknown as {
+    renderTaskManager: RenderTaskManager | undefined
+}
+
+export const renderTaskManager = globalForTaskManager.renderTaskManager ?? new RenderTaskManager()
+
+if (process.env.NODE_ENV !== 'production') globalForTaskManager.renderTaskManager = renderTaskManager

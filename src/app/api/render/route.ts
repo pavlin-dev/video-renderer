@@ -38,6 +38,7 @@ async function performRender(taskId: string, parameters: {
 }) {
     const { width, height, duration, render, fps: requestedFps, quality, args, audio } = parameters;
     try {
+        console.log(`Starting render for task ${taskId}`);
         renderTaskManager.updateTaskStatus(taskId, 'processing', 0);
 
         // Use optimized defaults for better performance
@@ -359,6 +360,7 @@ async function performRender(taskId: string, parameters: {
         }
 
         // Update progress for encoding phase
+        console.log(`📹 Starting video encoding for task ${taskId}`);
         renderTaskManager.updateTaskProgress(taskId, 70);
 
         // Generate video with FFmpeg - optimized settings based on quality
@@ -420,7 +422,7 @@ async function performRender(taskId: string, parameters: {
                     if (!isResolved) {
                         isResolved = true;
                         clearTimeout(timeoutId);
-                        console.log("✓ FFmpeg encoding completed");
+                        console.log(`✓ FFmpeg encoding completed for task ${taskId}`);
                         resolve();
                     }
                 })
@@ -442,6 +444,7 @@ async function performRender(taskId: string, parameters: {
             command.run();
         });
 
+        console.log(`📊 Video encoding done for task ${taskId}, updating progress to 90%`);
         renderTaskManager.updateTaskProgress(taskId, 90);
 
         // Audio mixing if audio tracks are provided
@@ -453,8 +456,8 @@ async function performRender(taskId: string, parameters: {
             await new Promise<void>((resolve, reject) => {
                 let isResolved = false;
                 
-                // Set timeout for audio mixing
-                const timeoutMs = Math.max(60000, duration * 15000); // At least 60s, or 15s per second of video
+                // Set timeout for audio mixing (increased for better reliability)
+                const timeoutMs = Math.max(180000, duration * 45000); // At least 3min, or 45s per second of video
                 const timeoutId = setTimeout(() => {
                     if (!isResolved) {
                         isResolved = true;
@@ -594,7 +597,9 @@ async function performRender(taskId: string, parameters: {
             }
         };
 
+        console.log(`✓ Render completed for task ${taskId}, setting result...`);
         renderTaskManager.setTaskResult(taskId, result);
+        console.log(`✓ Task result set for ${taskId}`);
         
     } catch (error) {
         console.error("Render error:", error);
@@ -610,7 +615,9 @@ async function performRender(taskId: string, parameters: {
             details: error instanceof Error ? error.message : "Unknown error"
         };
 
+        console.log(`✗ Render failed for task ${taskId}, setting error result...`);
         renderTaskManager.setTaskResult(taskId, errorResult);
+        console.log(`✗ Error result set for ${taskId}`);
     }
 }
 
@@ -767,6 +774,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Create a new task
+        console.log('Creating new render task...');
         const taskId = renderTaskManager.createTask({
             width,
             height,
@@ -777,6 +785,7 @@ export async function POST(request: NextRequest) {
             args,
             audio
         });
+        console.log(`Task created with ID: ${taskId}`);
 
         // Start rendering in the background (don't await)
         performRender(taskId, {
@@ -790,6 +799,7 @@ export async function POST(request: NextRequest) {
             audio
         }).catch((error) => {
             console.error(`Background render failed for task ${taskId}:`, error);
+            console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
             renderTaskManager.setTaskResult(taskId, {
                 success: false,
                 error: "Failed to render video",
@@ -818,8 +828,11 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
     try {
+        console.log('GET /api/render called');
+        
         // Get all tasks from the task manager
         const allTasks = renderTaskManager.getAllTasks();
+        console.log(`Found ${allTasks.length} tasks`);
         
         // Sort by creation time (newest first)
         const sortedTasks = allTasks.sort((a, b) => 

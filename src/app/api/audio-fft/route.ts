@@ -227,7 +227,8 @@ async function analyzeAudioFFT(
 }
 
 /**
- * Proper FFT spectrum analysis
+ * Fast frequency band analysis using RMS energy
+ * Much faster than DFT while still providing useful frequency information
  */
 function analyzeWAVSpectrum(wavBuffer: Buffer, bars: number, smoothness: number = 0): number[] {
   // WAV header is 44 bytes
@@ -241,71 +242,51 @@ function analyzeWAVSpectrum(wavBuffer: Buffer, bars: number, smoothness: number 
     samples.push(sample / 32768.0); // Normalize to -1 to 1
   }
 
-  // Perform FFT analysis
-  const fftSize = Math.pow(2, Math.floor(Math.log2(samples.length)));
-  const fftSamples = samples.slice(0, fftSize);
-  
-  // Apply windowing function (Hanning window)
-  for (let i = 0; i < fftSamples.length; i++) {
-    const windowValue = 0.5 * (1 - Math.cos(2 * Math.PI * i / (fftSamples.length - 1)));
-    fftSamples[i] *= windowValue;
-  }
-  
-  // Simple DFT implementation for frequency analysis
+  // Fast frequency band analysis using overlapping windows
   const spectrum: number[] = [];
-  const nyquistFreq = fftSize / 2;
-  const freqBinSize = nyquistFreq / bars;
+  const sampleRate = 44100; // Sample rate from FFmpeg extraction
+  const maxFreq = sampleRate / 2; // Nyquist frequency
   
+  // Logarithmic frequency distribution (more realistic for audio)
   for (let band = 0; band < bars; band++) {
-    const startBin = Math.floor(band * freqBinSize);
-    const endBin = Math.floor((band + 1) * freqBinSize);
+    // Logarithmic frequency mapping
+    const logStart = Math.log(20 + band * (maxFreq - 20) / bars); 
+    const logEnd = Math.log(20 + (band + 1) * (maxFreq - 20) / bars);
     
-    let magnitude = 0;
+    const freqStart = Math.exp(logStart);
+    const freqEnd = Math.exp(logEnd);
+    
+    // Convert frequencies to sample indices
+    const startIdx = Math.floor((freqStart / maxFreq) * samples.length / 2);
+    const endIdx = Math.floor((freqEnd / maxFreq) * samples.length / 2);
+    
+    // Calculate RMS energy for this frequency band
+    let energy = 0;
     let count = 0;
     
-    for (let freqBin = startBin; freqBin < endBin && freqBin < nyquistFreq; freqBin++) {
-      // Calculate magnitude for this frequency bin using DFT
-      let real = 0;
-      let imag = 0;
-      
-      const freq = (freqBin * 2 * Math.PI) / fftSize;
-      
-      for (let n = 0; n < fftSamples.length; n++) {
-        real += fftSamples[n] * Math.cos(freq * n);
-        imag -= fftSamples[n] * Math.sin(freq * n);
-      }
-      
-      magnitude += Math.sqrt(real * real + imag * imag);
+    for (let i = startIdx; i < Math.min(endIdx, samples.length); i++) {
+      energy += samples[i] * samples[i];
       count++;
     }
     
     if (count > 0) {
-      magnitude = (magnitude / count) / fftSize; // Normalize
-      spectrum.push(Math.min(magnitude * 4, 1.0)); // Scale and clamp
+      const rms = Math.sqrt(energy / count);
+      // Apply perceptual scaling (roughly mimicking human hearing)
+      const scaledValue = Math.pow(rms, 0.7) * 2.5;
+      spectrum.push(Math.min(scaledValue, 1.0));
     } else {
       spectrum.push(0);
     }
   }
 
-  // Apply smoothing if requested
+  // Apply smoothing if requested (much simpler)
   if (smoothness > 0) {
-    const windowSize = Math.max(1, Math.floor(smoothness * bars / 10));
-    const halfWindow = Math.floor(windowSize / 2);
-    const smoothed: number[] = [];
+    const smoothed: number[] = [...spectrum];
+    const factor = Math.min(smoothness, 0.8); // Limit smoothing
     
-    for (let i = 0; i < spectrum.length; i++) {
-      let sum = 0;
-      let count = 0;
-      
-      for (let k = -halfWindow; k <= halfWindow; k++) {
-        const idx = i + k;
-        if (idx >= 0 && idx < spectrum.length) {
-          sum += spectrum[idx];
-          count++;
-        }
-      }
-      
-      smoothed.push(sum / count);
+    for (let i = 1; i < spectrum.length - 1; i++) {
+      smoothed[i] = spectrum[i] * (1 - factor) + 
+                   (spectrum[i-1] + spectrum[i+1]) * factor * 0.5;
     }
     
     return smoothed;

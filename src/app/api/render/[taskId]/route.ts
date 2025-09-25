@@ -16,6 +16,7 @@ export async function GET(
         }
 
         const task = renderTaskManager.getTask(taskId);
+        console.log(`Task lookup result for ${taskId}:`, task ? 'found' : 'not found');
 
         if (!task) {
             return NextResponse.json(
