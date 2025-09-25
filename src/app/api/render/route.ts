@@ -139,8 +139,6 @@ export async function POST(request: NextRequest) {
             '--disable-renderer-backgrounding',
             '--disable-features=TranslateUI,AudioServiceOutOfProcess',
             '--no-first-run',
-            '--no-zygote',
-            '--single-process',
             '--disable-extensions',
             '--disable-default-apps',
             '--disable-background-networking',
