@@ -37,9 +37,9 @@ function parseTimeToSeconds(timeStr: string): number | null {
 /**
  * Generate cache key
  */
-function getCacheKey(audioUrl: string, time: number, bars: number): string {
+function getCacheKey(audioUrl: string, time: number, bars: number, smoothness: number = 0): string {
   const hash = crypto.createHash('md5');
-  hash.update(`${audioUrl}_${time}_${bars}`);
+  hash.update(`${audioUrl}_${time}_${bars}_${smoothness}`);
   return hash.digest('hex');
 }
 
@@ -98,7 +98,8 @@ async function analyzeAudioFFT(
   audioPath: string,
   time: number,
   duration: number = 0.05, // 50ms default
-  bars: number = 32
+  bars: number = 32,
+  smoothness: number = 0
 ): Promise<number[]> {
   const tempDir = path.join(process.cwd(), 'temp');
   const segmentPath = path.join(tempDir, `audio_segment_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.wav`);
@@ -159,7 +160,7 @@ async function analyzeAudioFFT(
       
       try {
         const wavData = fs.readFileSync(segmentPath);
-        const spectrum = analyzeWAVSpectrum(wavData, bars);
+        const spectrum = analyzeWAVSpectrum(wavData, bars, smoothness);
         resolve(spectrum);
       } catch (error) {
         reject(error);
@@ -181,7 +182,7 @@ async function analyzeAudioFFT(
  * Simple WAV spectrum analysis
  * This is a simplified version - for production, use a proper FFT library
  */
-function analyzeWAVSpectrum(wavBuffer: Buffer, bars: number): number[] {
+function analyzeWAVSpectrum(wavBuffer: Buffer, bars: number, smoothness: number = 0): number[] {
   // WAV header is 44 bytes
   const headerSize = 44;
   const audioData = wavBuffer.slice(headerSize);
@@ -211,6 +212,30 @@ function analyzeWAVSpectrum(wavBuffer: Buffer, bars: number): number[] {
     spectrum.push(Math.min(rms * 2, 1.0)); // Scale and clamp to 0-1
   }
 
+  // Apply smoothing if requested (smoothness = window size)
+  if (smoothness > 0) {
+    const windowSize = Math.floor(smoothness);
+    const halfWindow = Math.floor(windowSize / 2);
+    const smoothed: number[] = [];
+    
+    for (let i = 0; i < spectrum.length; i++) {
+      let sum = 0;
+      let count = 0;
+      
+      for (let k = -halfWindow; k <= halfWindow; k++) {
+        const idx = i + k;
+        if (idx >= 0 && idx < spectrum.length) {
+          sum += spectrum[idx];
+          count++;
+        }
+      }
+      
+      smoothed.push(sum / count);
+    }
+    
+    return smoothed;
+  }
+
   return spectrum;
 }
 
@@ -221,6 +246,7 @@ export async function GET(request: NextRequest) {
     const timeParam = searchParams.get('time');
     const barsParam = searchParams.get('bars');
     const durationParam = searchParams.get('duration');
+    const smoothnessParam = searchParams.get('smoothness');
 
     // Validate required parameters
     if (!audioUrl) {
@@ -249,6 +275,7 @@ export async function GET(request: NextRequest) {
     // Parse optional parameters
     const bars = barsParam ? parseInt(barsParam, 10) : 32;
     const duration = durationParam ? parseFloat(durationParam) : 0.05; // 50ms default
+    const smoothness = smoothnessParam ? parseFloat(smoothnessParam) : 0;
 
     if (bars < 1 || bars > 256) {
       return NextResponse.json(
@@ -257,8 +284,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    if (smoothness < 0 || smoothness > 1) {
+      return NextResponse.json(
+        { error: 'smoothness must be between 0 and 1' },
+        { status: 400 }
+      );
+    }
+
     // Check cache first
-    const cacheKey = getCacheKey(audioUrl, time, bars);
+    const cacheKey = getCacheKey(audioUrl, time, bars, smoothness);
     const cachedSpectrum = getCachedFFT(cacheKey);
     if (cachedSpectrum) {
       console.log(`FFT cache hit for ${audioUrl} at ${time}s`);
@@ -335,8 +369,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Analyze FFT
-    console.log(`Analyzing FFT for ${audioUrl} at ${time}s with ${bars} bars...`);
-    const spectrum = await analyzeAudioFFT(audioPath, time, duration, bars);
+    console.log(`Analyzing FFT for ${audioUrl} at ${time}s with ${bars} bars (smoothness: ${smoothness})...`);
+    const spectrum = await analyzeAudioFFT(audioPath, time, duration, bars, smoothness);
 
     // Cache the result
     setCachedFFT(cacheKey, spectrum);
