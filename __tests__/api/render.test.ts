@@ -309,6 +309,50 @@ describe('/api/render', () => {
     result = await response.json();
     expect(response.status).toBe(400);
     expect(result.error).toBe('audio[0].volume must be a number between 0 and 1');
+
+    // Test audio start time exceeding video duration
+    const startTooLateData = {
+      width: 800,
+      height: 600,
+      duration: 2,
+      render: "({time}) => `<div>${time}</div>`",
+      audio: [{ url: "test.mp3", start: 3, volume: 0.5 }]
+    };
+
+    request = new NextRequest('http://localhost:3000/api/render', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(startTooLateData),
+    });
+
+    response = await POST(request);
+    result = await response.json();
+    expect(response.status).toBe(400);
+    expect(result.error).toBe('audio[0].start (3) must be less than video duration (2)');
+
+    // Test audio end time exceeding video duration
+    const endTooLateData = {
+      width: 800,
+      height: 600,
+      duration: 2,
+      render: "({time}) => `<div>${time}</div>`",
+      audio: [{ url: "test.mp3", start: 0, end: 3, volume: 0.5 }]
+    };
+
+    request = new NextRequest('http://localhost:3000/api/render', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(endTooLateData),
+    });
+
+    response = await POST(request);
+    result = await response.json();
+    expect(response.status).toBe(400);
+    expect(result.error).toBe('audio[0].end (3) cannot exceed video duration (2)');
   });
 
   it('should accept valid audio parameter', async () => {
@@ -317,18 +361,18 @@ describe('/api/render', () => {
     const testData = {
       width: 800,
       height: 600,
-      duration: 0.1,
+      duration: 3, // Increase duration to accommodate audio tracks
       render: "({time}) => `<div>${time}</div>`",
       audio: [
         {
           url: "https://example.com/track1.mp3",
           start: 0,
-          end: 2,
+          end: 2, // Within duration
           volume: 0.8
         },
         {
           url: "https://example.com/track2.mp3", 
-          start: 1,
+          start: 1, // Within duration
           volume: 0.5
           // no end - should play until the end
         }

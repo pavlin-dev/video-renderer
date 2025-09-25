@@ -148,9 +148,23 @@ export async function POST(request: NextRequest) {
                     );
                 }
 
+                if (audioItem.start >= duration) {
+                    return NextResponse.json(
+                        { error: `audio[${i}].start (${audioItem.start}) must be less than video duration (${duration})` },
+                        { status: 400 }
+                    );
+                }
+
                 if (audioItem.end !== undefined && (typeof audioItem.end !== 'number' || audioItem.end <= audioItem.start)) {
                     return NextResponse.json(
                         { error: `audio[${i}].end must be a number greater than start` },
+                        { status: 400 }
+                    );
+                }
+
+                if (audioItem.end !== undefined && audioItem.end > duration) {
+                    return NextResponse.json(
+                        { error: `audio[${i}].end (${audioItem.end}) cannot exceed video duration (${duration})` },
                         { status: 400 }
                     );
                 }
@@ -606,17 +620,18 @@ export async function POST(request: NextRequest) {
                     audioInputs.push(`[a${i}]`);
                 }
                 
-                // Mix all audio tracks together
-                const mixFilter = audioInputs.join('') + `amix=inputs=${audio.length}:duration=longest[mixedaudio]`;
+                // Mix all audio tracks together, but limit to video duration
+                const mixFilter = audioInputs.join('') + `amix=inputs=${audio.length}:duration=first[mixedaudio]`;
                 audioFilters.push(mixFilter);
                 
-                // Combine video with mixed audio
-                const complexFilter = audioFilters.join(';');
+                // Combine video with mixed audio and limit audio duration to match video
+                const complexFilter = audioFilters.join(';') + `;[mixedaudio]atrim=duration=${duration}[finalaudio]`;
                 
                 command
                     .complexFilter(complexFilter)
-                    .outputOptions(['-map', '0:v', '-map', '[mixedaudio]'])
+                    .outputOptions(['-map', '0:v', '-map', '[finalaudio]'])
                     .outputOptions(['-c:v', 'copy', '-c:a', 'aac'])
+                    .outputOptions(['-shortest']) // Ensure output doesn't exceed video length
                     .output(finalOutputPath)
                     .on("end", () => {
                         if (!isResolved) {
