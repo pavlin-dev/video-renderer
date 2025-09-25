@@ -37,16 +37,16 @@ function parseTimeToSeconds(timeStr: string): number | null {
 /**
  * Generate cache key
  */
-function getCacheKey(audioUrl: string, time: number, bars: number, smoothness: number = 0): string {
+function getCacheKey(audioUrl: string, time: number, bars: number, smoothness: number = 0, frames: number = 1): string {
   const hash = crypto.createHash('md5');
-  hash.update(`${audioUrl}_${time}_${bars}_${smoothness}`);
+  hash.update(`${audioUrl}_${time}_${bars}_${smoothness}_${frames}`);
   return hash.digest('hex');
 }
 
 /**
  * Get cached FFT data
  */
-function getCachedFFT(cacheKey: string): number[] | null {
+function getCachedFFT(cacheKey: string): number[] | number[][] | null {
   try {
     const tempDir = path.join(process.cwd(), 'temp');
     const cacheDir = path.join(tempDir, 'fft_cache');
@@ -75,7 +75,7 @@ function getCachedFFT(cacheKey: string): number[] | null {
 /**
  * Save FFT data to cache
  */
-function setCachedFFT(cacheKey: string, spectrum: number[]): void {
+function setCachedFFT(cacheKey: string, spectrum: number[] | number[][]): void {
   try {
     const tempDir = path.join(process.cwd(), 'temp');
     const cacheDir = path.join(tempDir, 'fft_cache');
@@ -99,88 +99,135 @@ async function analyzeAudioFFT(
   time: number,
   duration: number = 0.05, // 50ms default
   bars: number = 32,
-  smoothness: number = 0
-): Promise<number[]> {
+  smoothness: number = 0,
+  frameCount: number = 1 // Number of time frames to analyze
+): Promise<number[][] | number[]> {
   const tempDir = path.join(process.cwd(), 'temp');
   const segmentPath = path.join(tempDir, `audio_segment_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.wav`);
   
-  // Extract audio segment using ffmpeg
-  await new Promise<void>((resolve, reject) => {
-    const ffmpeg = spawn('ffmpeg', [
-      '-y',
-      '-i', audioPath,
-      '-ss', time.toString(),
-      '-t', duration.toString(),
-      '-ar', '44100', // Sample rate
-      '-ac', '1', // Mono
-      '-f', 'wav',
-      segmentPath
-    ]);
+  // If only one frame is requested, return the original format
+  if (frameCount === 1) {
+    // Extract audio segment using ffmpeg
+    await new Promise<void>((resolve, reject) => {
+      const ffmpeg = spawn('ffmpeg', [
+        '-y',
+        '-i', audioPath,
+        '-ss', time.toString(),
+        '-t', duration.toString(),
+        '-ar', '44100', // Sample rate
+        '-ac', '1', // Mono
+        '-f', 'wav',
+        segmentPath
+      ]);
 
-    let stderr = '';
-    ffmpeg.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
+      let stderr = '';
+      ffmpeg.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
 
-    ffmpeg.on('close', (code: number) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        console.error('FFmpeg stderr:', stderr);
-        reject(new Error(`FFmpeg failed with code ${code}`));
-      }
-    });
+      ffmpeg.on('close', (code: number) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          console.error('FFmpeg stderr:', stderr);
+          reject(new Error(`FFmpeg failed with code ${code}`));
+        }
+      });
 
-    ffmpeg.on('error', (error) => {
-      console.error('FFmpeg spawn error:', error);
-      reject(error);
-    });
-  });
-
-  // Analyze FFT using ffmpeg's showfreqs filter
-  const fftData = await new Promise<number[]>((resolve, reject) => {
-    const ffmpeg = spawn('ffmpeg', [
-      '-i', segmentPath,
-      '-filter_complex',
-      `showfreqs=s=1280x720:mode=bar:ascale=log:fscale=log:colors=white`,
-      '-frames:v', '1',
-      '-f', 'null',
-      '-'
-    ]);
-
-    ffmpeg.stderr.on('data', (data) => {
-      // Log stderr data but don't store it as we're not using it
-      console.log('FFmpeg stderr:', data.toString());
-    });
-
-    ffmpeg.on('close', () => {
-      // Parse frequency data from stderr
-      // For now, we'll use a simpler approach with sox or read WAV data directly
-      // Fall back to reading WAV and doing simple analysis
-      
-      try {
-        const wavData = fs.readFileSync(segmentPath);
-        const spectrum = analyzeWAVSpectrum(wavData, bars, smoothness);
-        resolve(spectrum);
-      } catch (error) {
+      ffmpeg.on('error', (error) => {
+        console.error('FFmpeg spawn error:', error);
         reject(error);
-      }
+      });
     });
 
-    ffmpeg.on('error', reject);
-  });
+    try {
+      const wavData = fs.readFileSync(segmentPath);
+      const spectrum = analyzeWAVSpectrum(wavData, bars, smoothness);
+      
+      // Cleanup
+      try {
+        fs.unlinkSync(segmentPath);
+      } catch {}
+      
+      return spectrum;
+    } catch (error) {
+      // Cleanup on error
+      try {
+        fs.unlinkSync(segmentPath);
+      } catch {}
+      throw error;
+    }
+  }
 
-  // Cleanup
-  try {
-    fs.unlinkSync(segmentPath);
-  } catch {}
+  // Multi-frame analysis - return spectrum over time
+  const frameSpectrums: number[][] = [];
+  const frameDuration = duration; // Duration per frame
+  
+  for (let frame = 0; frame < frameCount; frame++) {
+    const frameTime = time + (frame * frameDuration);
+    const frameSegmentPath = path.join(tempDir, `audio_frame_${Date.now()}_${frame}_${Math.random().toString(36).substring(2, 11)}.wav`);
+    
+    try {
+      // Extract this frame's audio segment
+      await new Promise<void>((resolve, reject) => {
+        const ffmpeg = spawn('ffmpeg', [
+          '-y',
+          '-i', audioPath,
+          '-ss', frameTime.toString(),
+          '-t', frameDuration.toString(),
+          '-ar', '44100',
+          '-ac', '1',
+          '-f', 'wav',
+          frameSegmentPath
+        ]);
 
-  return fftData;
+        let stderr = '';
+        ffmpeg.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+
+        ffmpeg.on('close', (code: number) => {
+          if (code === 0) {
+            resolve();
+          } else {
+            console.error('FFmpeg stderr:', stderr);
+            reject(new Error(`FFmpeg failed with code ${code}`));
+          }
+        });
+
+        ffmpeg.on('error', (error) => {
+          console.error('FFmpeg spawn error:', error);
+          reject(error);
+        });
+      });
+
+      // Analyze this frame
+      const wavData = fs.readFileSync(frameSegmentPath);
+      const frameSpectrum = analyzeWAVSpectrum(wavData, bars, smoothness);
+      frameSpectrums.push(frameSpectrum);
+      
+      // Cleanup frame file
+      try {
+        fs.unlinkSync(frameSegmentPath);
+      } catch {}
+      
+    } catch (error) {
+      console.error(`Error analyzing frame ${frame}:`, error);
+      // Add zeros for failed frames to maintain array structure
+      frameSpectrums.push(new Array(bars).fill(0));
+      
+      // Cleanup on error
+      try {
+        fs.unlinkSync(frameSegmentPath);
+      } catch {}
+    }
+  }
+
+  return frameSpectrums;
 }
 
 /**
- * Simple WAV spectrum analysis
- * This is a simplified version - for production, use a proper FFT library
+ * Proper FFT spectrum analysis
  */
 function analyzeWAVSpectrum(wavBuffer: Buffer, bars: number, smoothness: number = 0): number[] {
   // WAV header is 44 bytes
@@ -194,27 +241,55 @@ function analyzeWAVSpectrum(wavBuffer: Buffer, bars: number, smoothness: number 
     samples.push(sample / 32768.0); // Normalize to -1 to 1
   }
 
-  // Simple frequency band analysis
-  // Divide samples into bands and calculate RMS energy
+  // Perform FFT analysis
+  const fftSize = Math.pow(2, Math.floor(Math.log2(samples.length)));
+  const fftSamples = samples.slice(0, fftSize);
+  
+  // Apply windowing function (Hanning window)
+  for (let i = 0; i < fftSamples.length; i++) {
+    const windowValue = 0.5 * (1 - Math.cos(2 * Math.PI * i / (fftSamples.length - 1)));
+    fftSamples[i] *= windowValue;
+  }
+  
+  // Simple DFT implementation for frequency analysis
   const spectrum: number[] = [];
-  const samplesPerBand = Math.floor(samples.length / bars);
+  const nyquistFreq = fftSize / 2;
+  const freqBinSize = nyquistFreq / bars;
   
   for (let band = 0; band < bars; band++) {
-    const start = band * samplesPerBand;
-    const end = Math.min(start + samplesPerBand, samples.length);
+    const startBin = Math.floor(band * freqBinSize);
+    const endBin = Math.floor((band + 1) * freqBinSize);
     
-    let energy = 0;
-    for (let i = start; i < end; i++) {
-      energy += samples[i] * samples[i];
+    let magnitude = 0;
+    let count = 0;
+    
+    for (let freqBin = startBin; freqBin < endBin && freqBin < nyquistFreq; freqBin++) {
+      // Calculate magnitude for this frequency bin using DFT
+      let real = 0;
+      let imag = 0;
+      
+      const freq = (freqBin * 2 * Math.PI) / fftSize;
+      
+      for (let n = 0; n < fftSamples.length; n++) {
+        real += fftSamples[n] * Math.cos(freq * n);
+        imag -= fftSamples[n] * Math.sin(freq * n);
+      }
+      
+      magnitude += Math.sqrt(real * real + imag * imag);
+      count++;
     }
     
-    const rms = Math.sqrt(energy / (end - start));
-    spectrum.push(Math.min(rms * 2, 1.0)); // Scale and clamp to 0-1
+    if (count > 0) {
+      magnitude = (magnitude / count) / fftSize; // Normalize
+      spectrum.push(Math.min(magnitude * 4, 1.0)); // Scale and clamp
+    } else {
+      spectrum.push(0);
+    }
   }
 
-  // Apply smoothing if requested (smoothness = window size)
+  // Apply smoothing if requested
   if (smoothness > 0) {
-    const windowSize = Math.floor(smoothness);
+    const windowSize = Math.max(1, Math.floor(smoothness * bars / 10));
     const halfWindow = Math.floor(windowSize / 2);
     const smoothed: number[] = [];
     
@@ -247,6 +322,7 @@ export async function GET(request: NextRequest) {
     const barsParam = searchParams.get('bars');
     const durationParam = searchParams.get('duration');
     const smoothnessParam = searchParams.get('smoothness');
+    const framesParam = searchParams.get('frames');
 
     // Validate required parameters
     if (!audioUrl) {
@@ -276,6 +352,7 @@ export async function GET(request: NextRequest) {
     const bars = barsParam ? parseInt(barsParam, 10) : 32;
     const duration = durationParam ? parseFloat(durationParam) : 0.05; // 50ms default
     const smoothness = smoothnessParam ? parseFloat(smoothnessParam) : 0;
+    const frames = framesParam ? parseInt(framesParam, 10) : 1;
 
     if (bars < 1 || bars > 256) {
       return NextResponse.json(
@@ -291,15 +368,24 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    if (frames < 1 || frames > 100) {
+      return NextResponse.json(
+        { error: 'frames must be between 1 and 100' },
+        { status: 400 }
+      );
+    }
+
     // Check cache first
-    const cacheKey = getCacheKey(audioUrl, time, bars, smoothness);
+    const cacheKey = getCacheKey(audioUrl, time, bars, smoothness, frames);
     const cachedSpectrum = getCachedFFT(cacheKey);
     if (cachedSpectrum) {
-      console.log(`FFT cache hit for ${audioUrl} at ${time}s`);
+      console.log(`FFT cache hit for ${audioUrl} at ${time}s with ${frames} frames`);
       return NextResponse.json({
         success: true,
         time,
         bars,
+        frames,
+        duration,
         spectrum: cachedSpectrum,
         cached: true
       });
@@ -369,8 +455,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Analyze FFT
-    console.log(`Analyzing FFT for ${audioUrl} at ${time}s with ${bars} bars (smoothness: ${smoothness})...`);
-    const spectrum = await analyzeAudioFFT(audioPath, time, duration, bars, smoothness);
+    console.log(`Analyzing FFT for ${audioUrl} at ${time}s with ${bars} bars (smoothness: ${smoothness}, frames: ${frames})...`);
+    const spectrum = await analyzeAudioFFT(audioPath, time, duration, bars, smoothness, frames);
 
     // Cache the result
     setCachedFFT(cacheKey, spectrum);
@@ -379,6 +465,7 @@ export async function GET(request: NextRequest) {
       success: true,
       time,
       bars,
+      frames,
       duration,
       spectrum,
       cached: false

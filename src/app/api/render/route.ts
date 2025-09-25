@@ -815,3 +815,31 @@ export async function POST(request: NextRequest) {
         );
     }
 }
+
+export async function GET(request: NextRequest) {
+    try {
+        // Get all tasks from the task manager
+        const allTasks = renderTaskManager.getAllTasks();
+        
+        // Sort by creation time (newest first)
+        const sortedTasks = allTasks.sort((a, b) => 
+            b.createdAt.getTime() - a.createdAt.getTime()
+        );
+        
+        return NextResponse.json({
+            success: true,
+            tasks: sortedTasks,
+            count: sortedTasks.length
+        });
+        
+    } catch (error) {
+        console.error("GET API error:", error);
+        return NextResponse.json(
+            {
+                error: "Internal server error",
+                details: error instanceof Error ? error.message : "Unknown error"
+            },
+            { status: 500 }
+        );
+    }
+}
