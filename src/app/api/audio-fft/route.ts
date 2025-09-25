@@ -227,8 +227,7 @@ async function analyzeAudioFFT(
 }
 
 /**
- * Fast frequency band analysis using RMS energy
- * Much faster than DFT while still providing useful frequency information
+ * Proper FFT-based frequency spectrum analysis
  */
 function analyzeWAVSpectrum(wavBuffer: Buffer, bars: number, smoothness: number = 0): number[] {
   // WAV header is 44 bytes
@@ -242,47 +241,69 @@ function analyzeWAVSpectrum(wavBuffer: Buffer, bars: number, smoothness: number 
     samples.push(sample / 32768.0); // Normalize to -1 to 1
   }
 
-  // Fast frequency band analysis using overlapping windows
-  const spectrum: number[] = [];
-  const sampleRate = 44100; // Sample rate from FFmpeg extraction
-  const maxFreq = sampleRate / 2; // Nyquist frequency
+  // Find next power of 2 for FFT size
+  let fftSize = 1;
+  while (fftSize < samples.length) {
+    fftSize *= 2;
+  }
+  fftSize = Math.min(fftSize, 8192); // Cap at reasonable size
+
+  // Pad or truncate samples to FFT size
+  const paddedSamples = new Array(fftSize).fill(0);
+  for (let i = 0; i < Math.min(samples.length, fftSize); i++) {
+    paddedSamples[i] = samples[i];
+  }
+
+  // Apply Hanning window
+  for (let i = 0; i < paddedSamples.length; i++) {
+    const windowValue = 0.5 * (1 - Math.cos(2 * Math.PI * i / (paddedSamples.length - 1)));
+    paddedSamples[i] *= windowValue;
+  }
+
+  // Perform FFT
+  const fftResult = performFFT(paddedSamples);
   
-  // Logarithmic frequency distribution (more realistic for audio)
-  for (let band = 0; band < bars; band++) {
-    // Logarithmic frequency mapping
-    const logStart = Math.log(20 + band * (maxFreq - 20) / bars); 
-    const logEnd = Math.log(20 + (band + 1) * (maxFreq - 20) / bars);
+  // Calculate magnitude spectrum
+  const magnitudes: number[] = [];
+  for (let i = 0; i < fftResult.length / 2; i++) {
+    const real = fftResult[i * 2];
+    const imag = fftResult[i * 2 + 1];
+    const magnitude = Math.sqrt(real * real + imag * imag);
+    magnitudes.push(magnitude);
+  }
+
+  // Map FFT bins to frequency bars
+  const spectrum: number[] = [];
+  const sampleRate = 44100;
+  const nyquist = sampleRate / 2;
+  
+  for (let bar = 0; bar < bars; bar++) {
+    // Logarithmic frequency distribution
+    const freqStart = 20 * Math.pow(nyquist / 20, bar / bars);
+    const freqEnd = 20 * Math.pow(nyquist / 20, (bar + 1) / bars);
     
-    const freqStart = Math.exp(logStart);
-    const freqEnd = Math.exp(logEnd);
+    // Convert to FFT bin indices
+    const binStart = Math.floor(freqStart * fftSize / sampleRate);
+    const binEnd = Math.floor(freqEnd * fftSize / sampleRate);
     
-    // Convert frequencies to sample indices
-    const startIdx = Math.floor((freqStart / maxFreq) * samples.length / 2);
-    const endIdx = Math.floor((freqEnd / maxFreq) * samples.length / 2);
-    
-    // Calculate RMS energy for this frequency band
-    let energy = 0;
+    // Average magnitude in this frequency range
+    let sum = 0;
     let count = 0;
-    
-    for (let i = startIdx; i < Math.min(endIdx, samples.length); i++) {
-      energy += samples[i] * samples[i];
+    for (let bin = binStart; bin <= Math.min(binEnd, magnitudes.length - 1); bin++) {
+      sum += magnitudes[bin];
       count++;
     }
     
-    if (count > 0) {
-      const rms = Math.sqrt(energy / count);
-      // Apply perceptual scaling (roughly mimicking human hearing)
-      const scaledValue = Math.pow(rms, 0.7) * 2.5;
-      spectrum.push(Math.min(scaledValue, 1.0));
-    } else {
-      spectrum.push(0);
-    }
+    const avgMagnitude = count > 0 ? sum / count : 0;
+    // Apply logarithmic scaling for better visual representation
+    const scaledValue = Math.min(Math.log10(avgMagnitude * 10 + 1) / 2, 1.0);
+    spectrum.push(scaledValue);
   }
 
-  // Apply smoothing if requested (much simpler)
+  // Apply smoothing if requested
   if (smoothness > 0) {
     const smoothed: number[] = [...spectrum];
-    const factor = Math.min(smoothness, 0.8); // Limit smoothing
+    const factor = Math.min(smoothness, 0.8);
     
     for (let i = 1; i < spectrum.length - 1; i++) {
       smoothed[i] = spectrum[i] * (1 - factor) + 
@@ -293,6 +314,65 @@ function analyzeWAVSpectrum(wavBuffer: Buffer, bars: number, smoothness: number 
   }
 
   return spectrum;
+}
+
+/**
+ * Simple FFT implementation using Cooley-Tukey algorithm
+ */
+function performFFT(samples: number[]): number[] {
+  const N = samples.length;
+  if (N <= 1) return [...samples, ...new Array(N).fill(0)];
+  
+  // Ensure N is power of 2
+  if ((N & (N - 1)) !== 0) {
+    throw new Error('FFT size must be power of 2');
+  }
+  
+  // Bit-reverse permutation
+  const result = new Array(N * 2); // Interleaved real, imaginary
+  for (let i = 0; i < N; i++) {
+    const j = bitReverse(i, Math.log2(N));
+    result[j * 2] = samples[i]; // Real part
+    result[j * 2 + 1] = 0; // Imaginary part
+  }
+  
+  // Cooley-Tukey FFT
+  for (let size = 2; size <= N; size *= 2) {
+    const halfsize = size / 2;
+    const tablestep = N / size;
+    
+    for (let i = 0; i < N; i += size) {
+      for (let j = i, k = 0; j < i + halfsize; j++, k += tablestep) {
+        const angle = -2 * Math.PI * k / N;
+        const wReal = Math.cos(angle);
+        const wImag = Math.sin(angle);
+        
+        const uReal = result[j * 2];
+        const uImag = result[j * 2 + 1];
+        const vReal = result[(j + halfsize) * 2] * wReal - result[(j + halfsize) * 2 + 1] * wImag;
+        const vImag = result[(j + halfsize) * 2] * wImag + result[(j + halfsize) * 2 + 1] * wReal;
+        
+        result[j * 2] = uReal + vReal;
+        result[j * 2 + 1] = uImag + vImag;
+        result[(j + halfsize) * 2] = uReal - vReal;
+        result[(j + halfsize) * 2 + 1] = uImag - vImag;
+      }
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Bit-reverse function for FFT
+ */
+function bitReverse(n: number, bits: number): number {
+  let result = 0;
+  for (let i = 0; i < bits; i++) {
+    result = (result << 1) | (n & 1);
+    n >>= 1;
+  }
+  return result;
 }
 
 export async function GET(request: NextRequest) {
