@@ -5,6 +5,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { promisify } from "util";
 import * as vm from "vm";
+import { renderTaskManager } from "../../../lib/render-tasks";
 
 const mkdir = promisify(fs.mkdir);
 const unlink = promisify(fs.unlink);
@@ -19,164 +20,25 @@ interface FrameContext {
     [key: string]: unknown;
 }
 
-interface RenderResult {
-    html: string;
-    waitUntil?: () => boolean; // function that returns true when ready to render
-}
 
-// Remove unused RenderFunction type
-
-export async function POST(request: NextRequest) {
+async function performRender(taskId: string, parameters: {
+    width: number;
+    height: number;
+    duration: number;
+    render: string;
+    fps?: number;
+    quality?: 'low' | 'medium' | 'high';
+    args?: Record<string, unknown>;
+    audio?: Array<{
+        url: string;
+        start: number;
+        end?: number;
+        volume: number;
+    }>;
+}) {
+    const { width, height, duration, render, fps: requestedFps, quality, args, audio } = parameters;
     try {
-        // Check content type
-        const contentType = request.headers.get("content-type");
-        if (!contentType || !contentType.includes("application/json")) {
-            return NextResponse.json(
-                { error: "Content-Type must be application/json" },
-                { status: 400 }
-            );
-        }
-
-        // Parse and validate JSON body
-        let body: {
-            width?: number;
-            height?: number;
-            duration?: number;
-            render?: string;
-            fps?: number;
-            quality?: 'low' | 'medium' | 'high';
-            args?: Record<string, unknown>;
-            audio?: Array<{
-                url: string;
-                start: number;
-                end?: number;
-                volume: number;
-            }>;
-        };
-        try {
-            body = await request.json();
-        } catch {
-            return NextResponse.json(
-                { error: "Invalid JSON body" },
-                { status: 400 }
-            );
-        }
-
-        // Check if body is an object
-        if (!body || typeof body !== "object") {
-            return NextResponse.json(
-                { error: "Request body must be a JSON object" },
-                { status: 400 }
-            );
-        }
-
-        const { width, height, duration, render, fps: requestedFps, quality, args, audio } = body;
-
-        // Validate required fields and types
-        if (typeof width !== "number" || width <= 0) {
-            return NextResponse.json(
-                { error: "width must be a positive number" },
-                { status: 400 }
-            );
-        }
-
-        if (typeof height !== "number" || height <= 0) {
-            return NextResponse.json(
-                { error: "height must be a positive number" },
-                { status: 400 }
-            );
-        }
-
-        if (typeof duration !== "number" || duration <= 0) {
-            return NextResponse.json(
-                { error: "duration must be a positive number" },
-                { status: 400 }
-            );
-        }
-
-        if (typeof render !== "string" || render.trim() === "") {
-            return NextResponse.json(
-                { error: "render must be a non-empty string" },
-                { status: 400 }
-            );
-        }
-
-        // Validate optional fields
-        if (requestedFps !== undefined && (typeof requestedFps !== "number" || requestedFps <= 0 || requestedFps > 60)) {
-            return NextResponse.json(
-                { error: "fps must be a positive number between 1 and 60" },
-                { status: 400 }
-            );
-        }
-
-        if (quality !== undefined && !['low', 'medium', 'high'].includes(quality)) {
-            return NextResponse.json(
-                { error: "quality must be 'low', 'medium', or 'high'" },
-                { status: 400 }
-            );
-        }
-
-        // Validate audio parameter
-        if (audio !== undefined) {
-            if (!Array.isArray(audio)) {
-                return NextResponse.json(
-                    { error: "audio must be an array" },
-                    { status: 400 }
-                );
-            }
-
-            for (let i = 0; i < audio.length; i++) {
-                const audioItem = audio[i];
-                if (!audioItem || typeof audioItem !== 'object') {
-                    return NextResponse.json(
-                        { error: `audio[${i}] must be an object` },
-                        { status: 400 }
-                    );
-                }
-
-                if (typeof audioItem.url !== 'string' || audioItem.url.trim() === '') {
-                    return NextResponse.json(
-                        { error: `audio[${i}].url must be a non-empty string` },
-                        { status: 400 }
-                    );
-                }
-
-                if (typeof audioItem.start !== 'number' || audioItem.start < 0) {
-                    return NextResponse.json(
-                        { error: `audio[${i}].start must be a non-negative number` },
-                        { status: 400 }
-                    );
-                }
-
-                if (audioItem.start >= duration) {
-                    return NextResponse.json(
-                        { error: `audio[${i}].start (${audioItem.start}) must be less than video duration (${duration})` },
-                        { status: 400 }
-                    );
-                }
-
-                if (audioItem.end !== undefined && (typeof audioItem.end !== 'number' || audioItem.end <= audioItem.start)) {
-                    return NextResponse.json(
-                        { error: `audio[${i}].end must be a number greater than start` },
-                        { status: 400 }
-                    );
-                }
-
-                if (audioItem.end !== undefined && audioItem.end > duration) {
-                    return NextResponse.json(
-                        { error: `audio[${i}].end (${audioItem.end}) cannot exceed video duration (${duration})` },
-                        { status: 400 }
-                    );
-                }
-
-                if (typeof audioItem.volume !== 'number' || audioItem.volume < 0 || audioItem.volume > 1) {
-                    return NextResponse.json(
-                        { error: `audio[${i}].volume must be a number between 0 and 1` },
-                        { status: 400 }
-                    );
-                }
-            }
-        }
+        renderTaskManager.updateTaskStatus(taskId, 'processing', 0);
 
         // Use optimized defaults for better performance
         const fps = requestedFps || 24; // Lower default FPS for better performance
@@ -288,6 +150,10 @@ export async function POST(request: NextRequest) {
                         height,
                         ...(args || {})
                     };
+
+                    // Update progress based on frames rendered
+                    const progress = Math.floor((frame / totalFrames) * 70); // 70% for frames, 30% for encoding
+                    renderTaskManager.updateTaskProgress(taskId, progress);
 
                     // Execute render function on server side to avoid browser evaluation issues
                     let renderResultRaw: { html: string, waitUntilString: string | null };
@@ -492,6 +358,9 @@ export async function POST(request: NextRequest) {
             }
         }
 
+        // Update progress for encoding phase
+        renderTaskManager.updateTaskProgress(taskId, 70);
+
         // Generate video with FFmpeg - optimized settings based on quality
         const getFFmpegOptions = (quality: string) => {
             const baseOptions = [
@@ -562,10 +431,18 @@ export async function POST(request: NextRequest) {
                         console.error("✗ FFmpeg error:", err);
                         reject(err);
                     }
+                })
+                .on("progress", (progress) => {
+                    if (progress.percent) {
+                        const encodingProgress = 70 + (progress.percent / 100) * 20; // 20% for encoding
+                        renderTaskManager.updateTaskProgress(taskId, Math.floor(encodingProgress));
+                    }
                 });
 
             command.run();
         });
+
+        renderTaskManager.updateTaskProgress(taskId, 90);
 
         // Audio mixing if audio tracks are provided
         if (audio && audio.length > 0) {
@@ -648,6 +525,12 @@ export async function POST(request: NextRequest) {
                             console.error("✗ Audio mixing error:", err);
                             reject(err);
                         }
+                    })
+                    .on("progress", (progress) => {
+                        if (progress.percent) {
+                            const mixingProgress = 90 + (progress.percent / 100) * 10; // 10% for mixing
+                            renderTaskManager.updateTaskProgress(taskId, Math.floor(mixingProgress));
+                        }
                     });
                     
                 command.run();
@@ -697,7 +580,7 @@ export async function POST(request: NextRequest) {
         
         console.log("🎬 Video rendering completed successfully");
         
-        return NextResponse.json({
+        const result = {
             success: true,
             video: {
                 url: videoUrl,
@@ -709,7 +592,10 @@ export async function POST(request: NextRequest) {
                 width,
                 height
             }
-        });
+        };
+
+        renderTaskManager.setTaskResult(taskId, result);
+        
     } catch (error) {
         console.error("Render error:", error);
         
@@ -718,11 +604,212 @@ export async function POST(request: NextRequest) {
             global.gc();
         }
         
+        const errorResult = {
+            success: false,
+            error: "Failed to render video",
+            details: error instanceof Error ? error.message : "Unknown error"
+        };
+
+        renderTaskManager.setTaskResult(taskId, errorResult);
+    }
+}
+
+export async function POST(request: NextRequest) {
+    try {
+        // Check content type
+        const contentType = request.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+            return NextResponse.json(
+                { error: "Content-Type must be application/json" },
+                { status: 400 }
+            );
+        }
+
+        // Parse and validate JSON body
+        let body: {
+            width?: number;
+            height?: number;
+            duration?: number;
+            render?: string;
+            fps?: number;
+            quality?: 'low' | 'medium' | 'high';
+            args?: Record<string, unknown>;
+            audio?: Array<{
+                url: string;
+                start: number;
+                end?: number;
+                volume: number;
+            }>;
+        };
+        try {
+            body = await request.json();
+        } catch {
+            return NextResponse.json(
+                { error: "Invalid JSON body" },
+                { status: 400 }
+            );
+        }
+
+        // Check if body is an object
+        if (!body || typeof body !== "object") {
+            return NextResponse.json(
+                { error: "Request body must be a JSON object" },
+                { status: 400 }
+            );
+        }
+
+        const { width, height, duration, render, fps: requestedFps, quality, args, audio } = body;
+
+        // Validate required fields and types
+        if (typeof width !== "number" || width <= 0) {
+            return NextResponse.json(
+                { error: "width must be a positive number" },
+                { status: 400 }
+            );
+        }
+
+        if (typeof height !== "number" || height <= 0) {
+            return NextResponse.json(
+                { error: "height must be a positive number" },
+                { status: 400 }
+            );
+        }
+
+        if (typeof duration !== "number" || duration <= 0) {
+            return NextResponse.json(
+                { error: "duration must be a positive number" },
+                { status: 400 }
+            );
+        }
+
+        if (typeof render !== "string" || render.trim() === "") {
+            return NextResponse.json(
+                { error: "render must be a non-empty string" },
+                { status: 400 }
+            );
+        }
+
+        // Validate optional fields
+        if (requestedFps !== undefined && (typeof requestedFps !== "number" || requestedFps <= 0 || requestedFps > 60)) {
+            return NextResponse.json(
+                { error: "fps must be a positive number between 1 and 60" },
+                { status: 400 }
+            );
+        }
+
+        if (quality !== undefined && !['low', 'medium', 'high'].includes(quality)) {
+            return NextResponse.json(
+                { error: "quality must be 'low', 'medium', or 'high'" },
+                { status: 400 }
+            );
+        }
+
+        // Validate audio parameter
+        if (audio !== undefined) {
+            if (!Array.isArray(audio)) {
+                return NextResponse.json(
+                    { error: "audio must be an array" },
+                    { status: 400 }
+                );
+            }
+
+            for (let i = 0; i < audio.length; i++) {
+                const audioItem = audio[i];
+                if (!audioItem || typeof audioItem !== 'object') {
+                    return NextResponse.json(
+                        { error: `audio[${i}] must be an object` },
+                        { status: 400 }
+                    );
+                }
+
+                if (typeof audioItem.url !== 'string' || audioItem.url.trim() === '') {
+                    return NextResponse.json(
+                        { error: `audio[${i}].url must be a non-empty string` },
+                        { status: 400 }
+                    );
+                }
+
+                if (typeof audioItem.start !== 'number' || audioItem.start < 0) {
+                    return NextResponse.json(
+                        { error: `audio[${i}].start must be a non-negative number` },
+                        { status: 400 }
+                    );
+                }
+
+                if (audioItem.start >= duration) {
+                    return NextResponse.json(
+                        { error: `audio[${i}].start (${audioItem.start}) must be less than video duration (${duration})` },
+                        { status: 400 }
+                    );
+                }
+
+                if (audioItem.end !== undefined && (typeof audioItem.end !== 'number' || audioItem.end <= audioItem.start)) {
+                    return NextResponse.json(
+                        { error: `audio[${i}].end must be a number greater than start` },
+                        { status: 400 }
+                    );
+                }
+
+                if (audioItem.end !== undefined && audioItem.end > duration) {
+                    return NextResponse.json(
+                        { error: `audio[${i}].end (${audioItem.end}) cannot exceed video duration (${duration})` },
+                        { status: 400 }
+                    );
+                }
+
+                if (typeof audioItem.volume !== 'number' || audioItem.volume < 0 || audioItem.volume > 1) {
+                    return NextResponse.json(
+                        { error: `audio[${i}].volume must be a number between 0 and 1` },
+                        { status: 400 }
+                    );
+                }
+            }
+        }
+
+        // Create a new task
+        const taskId = renderTaskManager.createTask({
+            width,
+            height,
+            duration,
+            render,
+            fps: requestedFps,
+            quality,
+            args,
+            audio
+        });
+
+        // Start rendering in the background (don't await)
+        performRender(taskId, {
+            width,
+            height,
+            duration,
+            render,
+            fps: requestedFps,
+            quality,
+            args,
+            audio
+        }).catch((error) => {
+            console.error(`Background render failed for task ${taskId}:`, error);
+            renderTaskManager.setTaskResult(taskId, {
+                success: false,
+                error: "Failed to render video",
+                details: error instanceof Error ? error.message : "Unknown error"
+            });
+        });
+
+        // Return task ID immediately
+        return NextResponse.json({
+            success: true,
+            taskId,
+            message: "Rendering started in background"
+        });
+
+    } catch (error) {
+        console.error("API error:", error);
         return NextResponse.json(
             {
-                error: "Failed to render video",
-                details:
-                    error instanceof Error ? error.message : "Unknown error"
+                error: "Internal server error",
+                details: error instanceof Error ? error.message : "Unknown error"
             },
             { status: 500 }
         );
