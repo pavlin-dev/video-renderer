@@ -10,6 +10,8 @@ jest.mock('fluent-ffmpeg', () => {
     inputFPS: jest.fn().mockReturnThis(),
     outputOptions: jest.fn().mockReturnThis(),
     output: jest.fn().mockReturnThis(),
+    input: jest.fn().mockReturnThis(),
+    complexFilter: jest.fn().mockReturnThis(),
     on: jest.fn().mockImplementation((event: string, callback: () => void) => {
       if (event === 'end') {
         // Simulate successful completion
@@ -64,6 +66,7 @@ jest.mock('fs', () => ({
     rmdir: jest.fn().mockResolvedValue(undefined),
     stat: jest.fn().mockResolvedValue({ size: 1024 }),
     unlink: jest.fn().mockResolvedValue(undefined),
+    rename: jest.fn().mockResolvedValue(undefined),
   },
   mkdir: jest.fn(),
   writeFile: jest.fn(),
@@ -221,6 +224,115 @@ describe('/api/render', () => {
       duration: 0.1,
       render: "({time, frame}) => { return `<div>Frame ${frame} at ${time}s</div>`; }"
       // no args provided
+    };
+
+    const request = new NextRequest('http://localhost:3000/api/render', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(testData),
+    });
+
+    const response = await POST(request);
+    const result = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(result.success).toBe(true);
+  });
+
+  it('should validate audio parameter correctly', async () => {
+    const { POST } = await import('../../src/app/api/render/route');
+    
+    // Test invalid audio - not an array
+    const invalidAudioData = {
+      width: 800,
+      height: 600,
+      duration: 0.1,
+      render: "({time}) => `<div>${time}</div>`",
+      audio: "not an array"
+    };
+
+    let request = new NextRequest('http://localhost:3000/api/render', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(invalidAudioData),
+    });
+
+    let response = await POST(request);
+    let result = await response.json();
+    expect(response.status).toBe(400);
+    expect(result.error).toBe('audio must be an array');
+
+    // Test invalid audio item - missing url
+    const missingUrlData = {
+      width: 800,
+      height: 600,
+      duration: 0.1,
+      render: "({time}) => `<div>${time}</div>`",
+      audio: [{ start: 0, volume: 0.5 }]
+    };
+
+    request = new NextRequest('http://localhost:3000/api/render', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(missingUrlData),
+    });
+
+    response = await POST(request);
+    result = await response.json();
+    expect(response.status).toBe(400);
+    expect(result.error).toBe('audio[0].url must be a non-empty string');
+
+    // Test invalid volume
+    const invalidVolumeData = {
+      width: 800,
+      height: 600,
+      duration: 0.1,
+      render: "({time}) => `<div>${time}</div>`",
+      audio: [{ url: "test.mp3", start: 0, volume: 2 }]
+    };
+
+    request = new NextRequest('http://localhost:3000/api/render', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(invalidVolumeData),
+    });
+
+    response = await POST(request);
+    result = await response.json();
+    expect(response.status).toBe(400);
+    expect(result.error).toBe('audio[0].volume must be a number between 0 and 1');
+  });
+
+  it('should accept valid audio parameter', async () => {
+    const { POST } = await import('../../src/app/api/render/route');
+    
+    const testData = {
+      width: 800,
+      height: 600,
+      duration: 0.1,
+      render: "({time}) => `<div>${time}</div>`",
+      audio: [
+        {
+          url: "https://example.com/track1.mp3",
+          start: 0,
+          end: 2,
+          volume: 0.8
+        },
+        {
+          url: "https://example.com/track2.mp3", 
+          start: 1,
+          volume: 0.5
+          // no end - should play until the end
+        }
+      ]
     };
 
     const request = new NextRequest('http://localhost:3000/api/render', {

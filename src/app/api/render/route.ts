@@ -46,6 +46,12 @@ export async function POST(request: NextRequest) {
             fps?: number;
             quality?: 'low' | 'medium' | 'high';
             args?: Record<string, any>;
+            audio?: Array<{
+                url: string;
+                start: number;
+                end?: number;
+                volume: number;
+            }>;
         };
         try {
             body = await request.json();
@@ -64,7 +70,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const { width, height, duration, render, fps: requestedFps, quality, args } = body;
+        const { width, height, duration, render, fps: requestedFps, quality, args, audio } = body;
 
         // Validate required fields and types
         if (typeof width !== "number" || width <= 0) {
@@ -108,6 +114,54 @@ export async function POST(request: NextRequest) {
                 { error: "quality must be 'low', 'medium', or 'high'" },
                 { status: 400 }
             );
+        }
+
+        // Validate audio parameter
+        if (audio !== undefined) {
+            if (!Array.isArray(audio)) {
+                return NextResponse.json(
+                    { error: "audio must be an array" },
+                    { status: 400 }
+                );
+            }
+
+            for (let i = 0; i < audio.length; i++) {
+                const audioItem = audio[i];
+                if (!audioItem || typeof audioItem !== 'object') {
+                    return NextResponse.json(
+                        { error: `audio[${i}] must be an object` },
+                        { status: 400 }
+                    );
+                }
+
+                if (typeof audioItem.url !== 'string' || audioItem.url.trim() === '') {
+                    return NextResponse.json(
+                        { error: `audio[${i}].url must be a non-empty string` },
+                        { status: 400 }
+                    );
+                }
+
+                if (typeof audioItem.start !== 'number' || audioItem.start < 0) {
+                    return NextResponse.json(
+                        { error: `audio[${i}].start must be a non-negative number` },
+                        { status: 400 }
+                    );
+                }
+
+                if (audioItem.end !== undefined && (typeof audioItem.end !== 'number' || audioItem.end <= audioItem.start)) {
+                    return NextResponse.json(
+                        { error: `audio[${i}].end must be a number greater than start` },
+                        { status: 400 }
+                    );
+                }
+
+                if (typeof audioItem.volume !== 'number' || audioItem.volume < 0 || audioItem.volume > 1) {
+                    return NextResponse.json(
+                        { error: `audio[${i}].volume must be a number between 0 and 1` },
+                        { status: 400 }
+                    );
+                }
+            }
         }
 
         // Use optimized defaults for better performance
@@ -498,6 +552,101 @@ export async function POST(request: NextRequest) {
 
             command.run();
         });
+
+        // Audio mixing if audio tracks are provided
+        if (audio && audio.length > 0) {
+            console.log(`🎵 Adding ${audio.length} audio track(s) to video`);
+            
+            const finalOutputPath = path.join(tempDir, `final_video_${Date.now()}.mp4`);
+            
+            await new Promise<void>((resolve, reject) => {
+                let isResolved = false;
+                
+                // Set timeout for audio mixing
+                const timeoutMs = Math.max(60000, duration * 15000); // At least 60s, or 15s per second of video
+                const timeoutId = setTimeout(() => {
+                    if (!isResolved) {
+                        isResolved = true;
+                        reject(new Error(`Audio mixing timeout after ${timeoutMs}ms`));
+                    }
+                }, timeoutMs);
+                
+                let command = ffmpeg(outputPath);
+                
+                // Add audio inputs and build complex filter
+                const audioFilters: string[] = [];
+                const audioInputs: string[] = [];
+                
+                for (let i = 0; i < audio.length; i++) {
+                    const audioTrack = audio[i];
+                    command = command.input(audioTrack.url);
+                    
+                    // Build audio filter for this track
+                    let audioFilter = `[${i + 1}:a]`;
+                    
+                    // Apply volume
+                    if (audioTrack.volume !== 1) {
+                        audioFilter += `volume=${audioTrack.volume}`;
+                    } else {
+                        audioFilter += `anull`; // pass through
+                    }
+                    
+                    // Apply timing (adelay for start, atrim for end)
+                    if (audioTrack.start > 0) {
+                        audioFilter += `,adelay=${Math.round(audioTrack.start * 1000)}:all=1`;
+                    }
+                    
+                    if (audioTrack.end !== undefined) {
+                        const trimDuration = audioTrack.end - audioTrack.start;
+                        audioFilter += `,atrim=duration=${trimDuration}`;
+                    }
+                    
+                    audioFilter += `[a${i}]`;
+                    audioFilters.push(audioFilter);
+                    audioInputs.push(`[a${i}]`);
+                }
+                
+                // Mix all audio tracks together
+                const mixFilter = audioInputs.join('') + `amix=inputs=${audio.length}:duration=longest[mixedaudio]`;
+                audioFilters.push(mixFilter);
+                
+                // Combine video with mixed audio
+                const complexFilter = audioFilters.join(';');
+                
+                command
+                    .complexFilter(complexFilter)
+                    .outputOptions(['-map', '0:v', '-map', '[mixedaudio]'])
+                    .outputOptions(['-c:v', 'copy', '-c:a', 'aac'])
+                    .output(finalOutputPath)
+                    .on("end", () => {
+                        if (!isResolved) {
+                            isResolved = true;
+                            clearTimeout(timeoutId);
+                            console.log("✓ Audio mixing completed");
+                            resolve();
+                        }
+                    })
+                    .on("error", (err) => {
+                        if (!isResolved) {
+                            isResolved = true;
+                            clearTimeout(timeoutId);
+                            console.error("✗ Audio mixing error:", err);
+                            reject(err);
+                        }
+                    });
+                    
+                command.run();
+            });
+            
+            // Replace original video with mixed version
+            try {
+                await unlink(outputPath);
+                await fs.promises.rename(finalOutputPath, outputPath);
+                console.log("✓ Replaced video with audio-mixed version");
+            } catch (err) {
+                console.warn("Failed to replace video file:", err);
+            }
+        }
 
         // Clean up frame files
         for (const framePath of framePaths) {
