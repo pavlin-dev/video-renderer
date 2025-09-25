@@ -135,7 +135,7 @@ export async function GET(request: NextRequest) {
     const cachedFrame = getCachedFrame(cacheKey);
     if (cachedFrame) {
       console.log(`Cache hit for ${videoUrl} at ${time}s`);
-      return new NextResponse(cachedFrame, {
+      return new NextResponse(cachedFrame as BodyInit, {
         headers: {
           'Content-Type': 'image/png',
           'Content-Length': cachedFrame.length.toString(),
@@ -259,7 +259,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Return the frame as PNG image
-    return new NextResponse(frameBuffer, {
+    return new NextResponse(frameBuffer as BodyInit, {
       headers: {
         'Content-Type': 'image/png',
         'Content-Length': frameBuffer.length.toString(),
