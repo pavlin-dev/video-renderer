@@ -155,4 +155,67 @@ describe('/api/render', () => {
     expect(response.status).toBe(400);
     expect(result.error).toBe('Invalid JSON body');
   });
+
+  it('should pass args to render function context', async () => {
+    const { POST } = await import('../../src/app/api/render/route');
+    
+    const testArgs = {
+      color: 'red',
+      title: 'Test Video',
+      speed: 2
+    };
+    
+    const testData = {
+      width: 800,
+      height: 600,
+      duration: 0.1,
+      render: "({time, frame, color, title, speed}) => { return `<div style='color: ${color}'>${title} - Frame ${frame} - Speed ${speed} - Time ${time}</div>`; }",
+      args: testArgs
+    };
+
+    const request = new NextRequest('http://localhost:3000/api/render', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(testData),
+    });
+
+    const response = await POST(request);
+    const result = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(result.success).toBe(true);
+    expect(result.video).toMatchObject({
+      width: 800,
+      height: 600,
+      duration: 0.1,
+    });
+  });
+
+  it('should work without args parameter', async () => {
+    const { POST } = await import('../../src/app/api/render/route');
+    
+    const testData = {
+      width: 800,
+      height: 600,
+      duration: 0.1,
+      render: "({time, frame}) => { return `<div>Frame ${frame} at ${time}s</div>`; }"
+      // no args provided
+    };
+
+    const request = new NextRequest('http://localhost:3000/api/render', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(testData),
+    });
+
+    const response = await POST(request);
+    const result = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(result.success).toBe(true);
+  });
 });
