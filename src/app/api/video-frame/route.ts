@@ -58,7 +58,7 @@ function getCachedFrame(cacheKey: string): Buffer | null {
   try {
     const tempDir = path.join(process.cwd(), 'temp');
     const cacheDir = path.join(tempDir, 'frame_cache');
-    const cachedPath = path.join(cacheDir, `${cacheKey}.png`);
+    const cachedPath = path.join(cacheDir, `${cacheKey}.jpg`);
     
     if (fs.existsSync(cachedPath)) {
       const stats = fs.statSync(cachedPath);
@@ -93,7 +93,7 @@ function setCachedFrame(cacheKey: string, frameBuffer: Buffer): void {
       fs.mkdirSync(cacheDir, { recursive: true });
     }
     
-    const cachedPath = path.join(cacheDir, `${cacheKey}.png`);
+    const cachedPath = path.join(cacheDir, `${cacheKey}.jpg`);
     fs.writeFileSync(cachedPath, frameBuffer);
   } catch (error) {
     console.warn('Cache write error:', error);
@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
       console.log(`Cache hit for ${videoUrl} at ${time}s`);
       return new NextResponse(cachedFrame as BodyInit, {
         headers: {
-          'Content-Type': 'image/png',
+          'Content-Type': 'image/jpeg',
           'Content-Length': cachedFrame.length.toString(),
           'Cache-Control': 'public, max-age=3600',
           'Access-Control-Allow-Origin': '*',
@@ -201,7 +201,7 @@ export async function GET(request: NextRequest) {
 
     // Create temporary frame file
     const tempDir = path.join(process.cwd(), 'temp');
-    const frameFilename = `frame_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.png`;
+    const frameFilename = `frame_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.jpg`;
     const frameOutputPath = path.join(tempDir, frameFilename);
 
     // Extract frame using ffmpeg
@@ -261,7 +261,7 @@ export async function GET(request: NextRequest) {
     // Return the frame as PNG image
     return new NextResponse(frameBuffer as BodyInit, {
       headers: {
-        'Content-Type': 'image/png',
+        'Content-Type': 'image/jpeg',
         'Content-Length': frameBuffer.length.toString(),
         'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
         'Access-Control-Allow-Origin': '*',
