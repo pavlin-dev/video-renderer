@@ -16,6 +16,7 @@ interface FrameContext {
     duration: number;
     width: number;
     height: number;
+    [key: string]: any;
 }
 
 interface RenderResult {
@@ -44,6 +45,7 @@ export async function POST(request: NextRequest) {
             render?: string;
             fps?: number;
             quality?: 'low' | 'medium' | 'high';
+            args?: Record<string, any>;
         };
         try {
             body = await request.json();
@@ -62,7 +64,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const { width, height, duration, render, fps: requestedFps, quality } = body;
+        const { width, height, duration, render, fps: requestedFps, quality, args } = body;
 
         // Validate required fields and types
         if (typeof width !== "number" || width <= 0) {
@@ -215,7 +217,8 @@ export async function POST(request: NextRequest) {
                         frame,
                         duration,
                         width,
-                        height
+                        height,
+                        ...(args || {})
                     };
 
                     // Execute render function on server side to avoid browser evaluation issues
