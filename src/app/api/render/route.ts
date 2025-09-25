@@ -224,14 +224,6 @@ export async function POST(request: NextRequest) {
                     // Execute render function on server side to avoid browser evaluation issues
                     let renderResultRaw: { html: string, waitUntilString: string | null };
                     try {
-                        // Debug: Log the render function string
-                        console.log('=== RENDER FUNCTION DEBUG ===');
-                        console.log('Raw render string length:', render.length);
-                        console.log('Full render function:');
-                        console.log(render);
-                        console.log('Contains hsl:', render.includes('hsl'));
-                        console.log('=== END DEBUG ===');
-                        
                         // Use vm module for safe evaluation of render function (without template literal escaping)
                         const script = new vm.Script(`(${render})`);
                         const renderFunction = script.runInNewContext({ fetch });

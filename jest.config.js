@@ -4,7 +4,9 @@ module.exports = {
   testMatch: [
     '**/__tests__/simple/*.test.js',
     '**/__tests__/*.test.ts',
-    '**/__tests__/*.test.js'
+    '**/__tests__/*.test.js',
+    '**/__tests__/**/*.test.ts',
+    '**/__tests__/**/*.test.js'
   ],
   testTimeout: 30000, // Increased for video processing
   clearMocks: true,

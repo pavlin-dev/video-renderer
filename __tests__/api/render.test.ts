@@ -31,10 +31,27 @@ jest.mock('playwright', () => ({
       newPage: jest.fn().mockResolvedValue({
         setViewportSize: jest.fn(),
         setContent: jest.fn(),
-        evaluate: jest.fn(),
+        setDefaultTimeout: jest.fn(),
+        setDefaultNavigationTimeout: jest.fn(),
+        evaluate: jest.fn().mockImplementation((func) => {
+          // Mock different behaviors based on the function being evaluated
+          if (typeof func === 'function') {
+            const funcStr = func.toString();
+            if (funcStr.includes('querySelectorAll(\'img\')')) {
+              return []; // No images
+            }
+            if (funcStr.includes('DOMParser')) {
+              return null; // No script content
+            }
+          }
+          return Promise.resolve();
+        }),
+        waitForFunction: jest.fn().mockResolvedValue(true),
+        waitForLoadState: jest.fn().mockResolvedValue(true),
         screenshot: jest.fn().mockResolvedValue(Buffer.from('fake-image')),
         close: jest.fn(),
       }),
+      contexts: jest.fn().mockReturnValue([]),
       close: jest.fn(),
     }),
   },
@@ -51,11 +68,13 @@ jest.mock('fs', () => ({
   mkdir: jest.fn(),
   writeFile: jest.fn(),
   unlink: jest.fn(),
+  existsSync: jest.fn().mockReturnValue(false), // Mock existsSync to return false
 }));
 
 // Mock path module
 jest.mock('path', () => ({
   join: jest.fn((...args) => args.join('/')),
+  basename: jest.fn((path) => path.split('/').pop()),
 }));
 
 // Mock util module
@@ -72,7 +91,7 @@ describe('/api/render', () => {
       width: 1080,
       height: 1920,
       duration: 1,
-      render: "({time}) => { document.body.innerHTML = `ahojda ${time}`; }"
+      render: "({time}) => { return `<div>ahojda ${time}</div>`; }"
     };
 
     // Create a proper NextRequest mock
@@ -90,7 +109,7 @@ describe('/api/render', () => {
     expect(response.status).toBe(200);
     expect(result.success).toBe(true);
     expect(result.video).toMatchObject({
-      frames: 30, // 1 second * 30 fps
+      frames: 24, // 1 second * 24 fps (default)
       duration: 1,
       width: 1080,
       height: 1920,
