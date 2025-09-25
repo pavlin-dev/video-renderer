@@ -188,7 +188,7 @@ export async function GET(request: NextRequest) {
             { status: 400 }
           );
         }
-      } catch (error) {
+      } catch {
         return NextResponse.json(
           { error: 'Invalid video URL format' },
           { status: 400 }

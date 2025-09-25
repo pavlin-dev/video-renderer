@@ -148,12 +148,12 @@ async function analyzeAudioFFT(
       '-'
     ]);
 
-    let stderr = '';
     ffmpeg.stderr.on('data', (data) => {
-      stderr += data.toString();
+      // Log stderr data but don't store it as we're not using it
+      console.log('FFmpeg stderr:', data.toString());
     });
 
-    ffmpeg.on('close', (code: number) => {
+    ffmpeg.on('close', () => {
       // Parse frequency data from stderr
       // For now, we'll use a simpler approach with sox or read WAV data directly
       // Fall back to reading WAV and doing simple analysis
@@ -356,7 +356,7 @@ export async function GET(request: NextRequest) {
           );
         }
         audioPath = audioUrl;
-      } catch (error) {
+      } catch {
         // Not a valid URL, might be a relative path - treat as local file
         audioPath = path.join(process.cwd(), audioUrl);
         if (!fs.existsSync(audioPath)) {

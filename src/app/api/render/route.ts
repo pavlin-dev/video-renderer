@@ -16,7 +16,7 @@ interface FrameContext {
     duration: number;
     width: number;
     height: number;
-    [key: string]: any;
+    [key: string]: unknown;
 }
 
 interface RenderResult {
@@ -24,7 +24,7 @@ interface RenderResult {
     waitUntil?: () => boolean; // function that returns true when ready to render
 }
 
-type RenderFunction = (ctx: FrameContext) => RenderResult | Promise<RenderResult> | string;
+// Remove unused RenderFunction type
 
 export async function POST(request: NextRequest) {
     try {
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
             render?: string;
             fps?: number;
             quality?: 'low' | 'medium' | 'high';
-            args?: Record<string, any>;
+            args?: Record<string, unknown>;
             audio?: Array<{
                 url: string;
                 start: number;
