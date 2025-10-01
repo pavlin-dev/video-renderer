@@ -4,10 +4,10 @@ import ffmpeg from "fluent-ffmpeg";
 import * as fs from "fs";
 import * as path from "path";
 import { promisify } from "util";
-import * as vm from "vm";
 import { renderTaskManager } from "../../../lib/render-tasks";
 import { RenderParams } from "@/app/api/render/types";
 import { validateAudioTracks, cleanupAudioFiles, ValidatedAudioTrack } from "../../../lib/audio-validation";
+import { evaluateJSXRenderFunction } from "../../../lib/jsx-transpiler";
 
 const mkdir = promisify(fs.mkdir);
 const unlink = promisify(fs.unlink);
@@ -172,37 +172,24 @@ async function performRender(taskId: string, parameters: RenderParams) {
                     const progress = baseProgress + Math.floor((frame / totalFrames) * 65); // 65% for frames, 25% for encoding
                     renderTaskManager.updateTaskProgress(taskId, progress);
 
-                    // Execute render function on server side to avoid browser evaluation issues
+                    // Execute render function with JSX support
                     let renderResultRaw: {
                         html: string;
                         waitUntilString: string | null;
                     };
                     try {
-                        // Use vm module for safe evaluation of render function (without template literal escaping)
-                        const script = new vm.Script(`(${render})`);
-                        const renderFunction = script.runInNewContext({
-                            fetch
-                        });
-                        const result = await Promise.resolve(
-                            renderFunction(context)
-                        );
-
-                        // Support both old string format and new object format
-                        if (typeof result === "string") {
-                            renderResultRaw = {
-                                html: result,
-                                waitUntilString: null
-                            };
-                        } else {
-                            // Convert waitUntil function to string for serialization
-                            const waitUntilString = result.waitUntil
-                                ? result.waitUntil.toString()
-                                : null;
-                            renderResultRaw = {
-                                html: result.html,
-                                waitUntilString
-                            };
-                        }
+                        // Use JSX transpiler for modern React-like syntax
+                        const result = await evaluateJSXRenderFunction(render, context);
+                        
+                        // Convert waitUntil function to string for serialization
+                        const waitUntilString = result.waitUntil
+                            ? result.waitUntil.toString()
+                            : null;
+                            
+                        renderResultRaw = {
+                            html: result.html,
+                            waitUntilString
+                        };
                     } catch (error) {
                         console.error(
                             "Render function evaluation error:",

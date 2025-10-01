@@ -93,112 +93,257 @@ export default function Home() {
 
   const examples = [
     {
-      name: "Simple Text Animation",
-      code: `({time}) => {
-  return \`<div style="
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
-    height: 100%;
-    color: white; 
-    font-family: Arial; 
-    font-size: 48px; 
-    background-color: hsl(\${time * 360}, 70%, 50%);
-    margin: 0;
-    padding: 0;
-  ">Hello \${time.toFixed(2)}s</div>\`;
+      name: "🎯 JSX Text Animation",
+      code: `// Modern JSX Syntax
+({time}) => {
+  return (
+    <div style={{
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      width: '100%',
+      height: '100%',
+      color: 'white',
+      fontFamily: 'Arial',
+      fontSize: '48px',
+      backgroundColor: \`hsl(\${time * 360}, 70%, 50%)\`,
+      margin: 0,
+      padding: 0
+    }}>
+      Hello {time.toFixed(2)}s
+    </div>
+  );
 }`
     },
     {
-      name: "Moving Circle",
-      code: `({time, width, height}) => {
+      name: "🔵 JSX Moving Circle",
+      code: `// JSX with Dynamic Position
+({time, width, height}) => {
   const x = (Math.sin(time * 2) + 1) * width / 2;
   const y = (Math.cos(time * 3) + 1) * height / 2;
-  return \`<div style="
-    position: absolute;
-    left: \${x}px;
-    top: \${y}px;
-    width: 50px;
-    height: 50px;
-    background: radial-gradient(circle, #ff6b6b, #4ecdc4);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-  "></div>\`;
-}`
-    },
-    {
-      name: "Progress Bar",
-      code: `({time, duration}) => {
-  const progress = (time / duration) * 100;
-  return \`<div style="
-    width: 80%;
-    height: 40px;
-    background: #ddd;
-    border-radius: 20px;
-    margin: 300px auto;
-    overflow: hidden;
-  ">
-    <div style="
-      width: \${progress}%;
-      height: 100%;
-      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-      transition: width 0.1s ease;
-    "></div>
-  </div>
-  <p style="text-align: center; font-family: Arial; font-size: 24px; margin-top: 20px;">
-    \${progress.toFixed(1)}% Complete
-  </p>\`;
-}`
-    },
-    {
-      name: "Image with Animation",
-      code: `({time}) => {
-  const rotation = time * 180; // Rotate 180 degrees per second
-  const scale = 0.8 + Math.sin(time * 2) * 0.2; // Pulsating scale
   
-  return \`<div style="
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(45deg, #667eea, #764ba2);
-  ">
-    <img 
-      src="https://picsum.photos/400/400?random=1" 
-      style="
-        width: 400px;
-        height: 400px;
-        border-radius: 50%;
-        transform: rotate(\${rotation}deg) scale(\${scale});
-        transition: transform 0.1s ease;
-        box-shadow: 0 20px 40px rgba(0,0,0,0.3);
-      "
-      alt="Animated image"
-    />
-  </div>\`;
+  return (
+    <div style={{
+      position: 'absolute',
+      left: \`\${x}px\`,
+      top: \`\${y}px\`,
+      width: '50px',
+      height: '50px',
+      background: 'radial-gradient(circle, #ff6b6b, #4ecdc4)',
+      borderRadius: '50%',
+      transform: 'translate(-50%, -50%)'
+    }} />
+  );
 }`
     },
     {
-      name: "Advanced with waitUntil",
-      code: `({time}) => {
+      name: "📊 JSX Progress Bar",
+      code: `// JSX Progress Bar with Conditional Rendering
+({time, duration}) => {
+  const progress = (time / duration) * 100;
+  const isComplete = progress >= 100;
+  
+  return (
+    <div style={{
+      width: '100%',
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+      alignItems: 'center',
+      background: '#2c3e50'
+    }}>
+      <div style={{
+        width: '80%',
+        height: '40px',
+        background: '#ddd',
+        borderRadius: '20px',
+        overflow: 'hidden'
+      }}>
+        <div style={{
+          width: \`\${Math.min(progress, 100)}%\`,
+          height: '100%',
+          background: isComplete 
+            ? 'linear-gradient(90deg, #27ae60, #2ecc71)'
+            : 'linear-gradient(90deg, #667eea, #764ba2)',
+          transition: 'width 0.1s ease'
+        }} />
+      </div>
+      <p style={{
+        textAlign: 'center',
+        fontFamily: 'Arial',
+        fontSize: '24px',
+        marginTop: '20px',
+        color: 'white'
+      }}>
+        {progress.toFixed(1)}% {isComplete ? 'Complete!' : 'Loading...'}
+      </p>
+    </div>
+  );
+}`
+    },
+    {
+      name: "🖼️ JSX Image Animation",
+      code: `// JSX Image with Transform Animation
+({time}) => {
+  const rotation = time * 180;
+  const scale = 0.8 + Math.sin(time * 2) * 0.2;
+  
+  return (
+    <div style={{
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      width: '100%',
+      height: '100%',
+      background: 'linear-gradient(45deg, #667eea, #764ba2)'
+    }}>
+      <img 
+        src="https://picsum.photos/400/400?random=1"
+        alt="Animated image"
+        style={{
+          width: '400px',
+          height: '400px',
+          borderRadius: '50%',
+          transform: \`rotate(\${rotation}deg) scale(\${scale})\`,
+          transition: 'transform 0.1s ease',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
+        }}
+      />
+    </div>
+  );
+}`
+    },
+    {
+      name: "🔀 JSX Conditional Rendering",
+      code: `// JSX with Conditional Logic
+({time, frame}) => {
+  const isEven = frame % 2 === 0;
+  const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4'];
+  
+  return (
+    <div style={{
+      width: '100%',
+      height: '100%',
+      background: isEven ? '#3498db' : '#e74c3c',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+      alignItems: 'center'
+    }}>
+      {time > 1 && (
+        <h1 style={{ 
+          color: 'white',
+          fontSize: '48px',
+          marginBottom: '20px'
+        }}>
+          Time is over 1 second!
+        </h1>
+      )}
+      {isEven ? (
+        <p style={{ color: 'white', fontSize: '24px' }}>
+          Even Frame: {frame}
+        </p>
+      ) : (
+        <p style={{ color: 'white', fontSize: '24px' }}>
+          Odd Frame: {frame}
+        </p>
+      )}
+    </div>
+  );
+}`
+    },
+    {
+      name: "📋 JSX Array Mapping",
+      code: `// JSX with Array Mapping
+({time, frame}) => {
+  const emojis = ['🎬', '🎥', '📹', '🎞️', '📽️'];
+  const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7'];
+  
+  return (
+    <div style={{
+      width: '100%',
+      height: '100%',
+      background: '#2c3e50',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: '20px'
+    }}>
+      {emojis.map((emoji, index) => (
+        <div
+          key={index}
+          style={{
+            fontSize: \`\${40 + Math.sin(time + index) * 10}px\`,
+            color: colors[index],
+            transform: \`rotate(\${time * 45 + index * 30}deg)\`,
+            transition: 'all 0.3s ease'
+          }}
+        >
+          {emoji}
+        </div>
+      ))}
+    </div>
+  );
+}`
+    },
+    {
+      name: "🎭 JSX waitUntil Example",
+      code: `// JSX with waitUntil for Complex Animations
+({time}) => {
   return {
-    html: \`<div id="bg" style="width:100%;height:100%;background:#000;"></div>
-    <script>
-      const bg = document.getElementById('bg');
-      const hue = (time * 60) % 360;
-      bg.style.background = \`hsl(\${hue}, 70%, 45%)\`;
-      
-      // Signal when ready
-      setTimeout(() => {
-        document.body.setAttribute('data-frame-ready', '1');
-      }, 100);
-    </script>\`,
+    html: (
+      <div>
+        <div 
+          id="bg" 
+          style={{
+            width: '100%',
+            height: '100%',
+            background: \`hsl(\${(time * 60) % 360}, 70%, 45%)\`,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center'
+          }}
+        >
+          <h1 style={{
+            color: 'white',
+            fontSize: '48px',
+            textShadow: '2px 2px 4px rgba(0,0,0,0.5)'
+          }}>
+            Loading Animation...
+          </h1>
+        </div>
+        <script>
+          {\`
+            setTimeout(() => {
+              document.body.setAttribute('data-frame-ready', '1');
+            }, 100);
+          \`}
+        </script>
+      </div>
+    ),
     waitUntil: () => {
       return document.body.getAttribute('data-frame-ready') === '1';
     }
   };
+}`
+    },
+    {
+      name: "📜 Legacy HTML String",
+      code: `// Legacy Format (still supported)
+({time, frame}) => {
+  return \`<div style="
+    width: 100px;
+    height: 100px;
+    background: red;
+    transform: rotate(\${time * 45}deg);
+    margin: 500px auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-family: Arial;
+  ">Frame \${frame}</div>\`;
 }`
     }
   ];
@@ -285,11 +430,16 @@ export default function Home() {
         <div className="text-center mb-12">
           <h1 className="text-5xl font-bold text-gray-900 mb-4">
             🎬 Dynamic Video Renderer
+            <span className="text-3xl ml-4">✨ Now with JSX!</span>
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Generate videos from HTML and JavaScript. Write a render function that returns HTML, 
-            and we&apos;ll create a video with your animations frame by frame.
+            Generate videos from React-like JSX or HTML code. Write modern JSX render functions 
+            and we&apos;ll create professional videos with your animations frame by frame.
           </p>
+          <div className="mt-6 inline-flex items-center gap-2 bg-blue-100 text-blue-800 px-4 py-2 rounded-full">
+            <span className="text-lg">🚀</span>
+            <span className="font-medium">New: React-like JSX syntax support!</span>
+          </div>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-8">
@@ -331,34 +481,58 @@ export default function Home() {
               </div>
 
               <div>
-                <h3 className="text-xl font-semibold text-gray-800 mb-3">Render Function</h3>
+                <h3 className="text-xl font-semibold text-gray-800 mb-3">✨ JSX Render Function</h3>
+                <div className="bg-blue-50 p-3 rounded-lg mb-3">
+                  <p className="text-blue-800 font-medium">🎉 New! You can now use React-like JSX syntax!</p>
+                </div>
                 <p className="text-gray-600 mb-3">
-                  Your render function receives a context object and can return either HTML string or object:
+                  Your render function receives a context object and can return JSX, HTML string, or object:
                 </p>
                 
                 <div className="mb-4">
-                  <h4 className="text-lg font-medium text-gray-700 mb-2">Simple Format (HTML String)</h4>
+                  <h4 className="text-lg font-medium text-gray-700 mb-2">🚀 JSX Format (Recommended)</h4>
+                  <div className="bg-blue-50 p-3 rounded-lg text-sm font-mono border border-blue-200">
+                    <pre>{`({time, frame}) => {
+  return (
+    <div style={{
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      width: '100%',
+      height: '100%',
+      fontSize: '48px',
+      background: \`hsl(\${time * 60}, 70%, 50%)\`
+    }}>
+      Frame {frame}
+    </div>
+  );
+}`}</pre>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <h4 className="text-lg font-medium text-gray-700 mb-2">📜 Legacy HTML String (Still Supported)</h4>
                   <div className="bg-gray-100 p-3 rounded-lg text-sm font-mono">
-                    <pre>{`({time, frame, duration, width, height}) => {
+                    <pre>{`({time, frame}) => {
   return \`<div style="display: flex; justify-content: center; align-items: center; width: 100%; height: 100%; font-size: 48px;">Frame \${frame}</div>\`;
 }`}</pre>
                   </div>
                 </div>
 
                 <div className="mb-4">
-                  <h4 className="text-lg font-medium text-gray-700 mb-2">Advanced Format (Object with waitUntil)</h4>
-                  <div className="bg-gray-100 p-3 rounded-lg text-sm font-mono">
+                  <h4 className="text-lg font-medium text-gray-700 mb-2">🎭 JSX with waitUntil</h4>
+                  <div className="bg-blue-50 p-3 rounded-lg text-sm font-mono border border-blue-200">
                     <pre>{`({time}) => {
   return {
-    html: \`<div id="content">...</div>
-           <script>
-             // Your animation code here
-             document.body.setAttribute('data-ready', '1');
-           </script>\`,
-    waitUntil: () => {
-      // Return true when ready to capture
-      return document.body.getAttribute('data-ready') === '1';
-    }
+    html: (
+      <div style={{ background: \`hsl(\${time * 60}, 70%, 50%)\` }}>
+        <h1>Loading...</h1>
+        <script>{\`
+          document.body.setAttribute('data-ready', '1');
+        \`}</script>
+      </div>
+    ),
+    waitUntil: () => document.body.getAttribute('data-ready') === '1'
   };
 }`}</pre>
                   </div>
