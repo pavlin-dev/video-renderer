@@ -1,4 +1,4 @@
-import * as ts from "typescript";
+import * as ts from 'typescript';
 
 /**
  * React-like JSX to HTML transpiler for server-side rendering
@@ -116,7 +116,7 @@ function camelToKebab(str: string): string {
 }
 
 /**
- * Transpile JSX/TSX code to JavaScript
+ * Transpile JSX/TSX code to JavaScript using TypeScript
  */
 export function transpileJSX(code: string): string {
     // Configure TypeScript compiler options for JSX
