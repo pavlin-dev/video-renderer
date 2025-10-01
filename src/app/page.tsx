@@ -152,6 +152,35 @@ export default function Home() {
 }`
     },
     {
+      name: "Image with Animation",
+      code: `({time}) => {
+  const rotation = time * 180; // Rotate 180 degrees per second
+  const scale = 0.8 + Math.sin(time * 2) * 0.2; // Pulsating scale
+  
+  return \`<div style="
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(45deg, #667eea, #764ba2);
+  ">
+    <img 
+      src="https://picsum.photos/400/400?random=1" 
+      style="
+        width: 400px;
+        height: 400px;
+        border-radius: 50%;
+        transform: rotate(\${rotation}deg) scale(\${scale});
+        transition: transform 0.1s ease;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+      "
+      alt="Animated image"
+    />
+  </div>\`;
+}`
+    },
+    {
       name: "Advanced with waitUntil",
       code: `({time}) => {
   return {
