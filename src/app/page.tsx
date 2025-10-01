@@ -1,9 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
-export default function Home() {
-  const [result, setResult] = useState<{
+interface Task {
+  taskId: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress: number;
+  createdAt: string;
+  updatedAt: string;
+  result?: {
     success: boolean;
     video?: {
       url: string;
@@ -15,9 +20,76 @@ export default function Home() {
       height: number;
     };
     error?: string;
-  } | null>(null);
-  const [loading, setLoading] = useState(false);
+    details?: string;
+  };
+  error?: {
+    success: boolean;
+    error: string;
+    details?: string;
+  };
+}
+
+export default function Home() {
+  const [currentTask, setCurrentTask] = useState<Task | null>(null);
   const [error, setError] = useState('');
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, []);
+
+  const pollTaskStatus = async (taskId: string) => {
+    try {
+      const response = await fetch(`/api/render/${taskId}`);
+      const data = await response.json();
+      
+      if (response.ok) {
+        setCurrentTask(data);
+        
+        // Stop polling when task is completed or failed
+        if (data.status === 'completed' || data.status === 'failed') {
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+        }
+      } else {
+        console.error('Failed to fetch task status:', data.error);
+        setError(data.error || 'Failed to fetch task status');
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+      }
+    } catch (err) {
+      console.error('Polling error:', err);
+      setError('Failed to check task status');
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    }
+  };
+
+  const startPolling = (taskId: string) => {
+    // Clear any existing polling
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+    
+    // Start new polling every 1 second
+    pollingIntervalRef.current = setInterval(() => {
+      pollTaskStatus(taskId);
+    }, 1000);
+    
+    // Also poll immediately
+    pollTaskStatus(taskId);
+  };
 
   const examples = [
     {
@@ -114,9 +186,14 @@ export default function Home() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
-    setResult(null);
+    setCurrentTask(null);
+
+    // Stop any existing polling
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
 
     try {
       const response = await fetch('/api/render', {
@@ -129,15 +206,23 @@ export default function Home() {
 
       const data = await response.json();
       
-      if (response.ok) {
-        setResult(data);
+      if (response.ok && data.taskId) {
+        // Set initial task state
+        setCurrentTask({
+          taskId: data.taskId,
+          status: 'pending',
+          progress: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+        
+        // Start polling for task status
+        startPolling(data.taskId);
       } else {
-        setError(data.error || 'Something went wrong');
+        setError(data.error || 'Failed to start rendering');
       }
     } catch {
       setError('Failed to connect to the API');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -177,7 +262,18 @@ export default function Home() {
   "duration": 2,      // Duration in seconds
   "render": "({time, frame, duration, width, height}) => {
     return \`<h1>Frame \${frame}</h1>\`;
-  }"
+  }",
+  // Optional parameters:
+  "fps": 24,          // Frames per second (default: 24)
+  "quality": "medium", // "low", "medium", "high" (default: "medium")
+  "audio": [          // Array of audio tracks
+    {
+      "url": "https://example.com/audio.mp3",
+      "start": 0,     // Start time in seconds
+      "end": 2,       // Optional: end time in seconds
+      "volume": 0.5   // Volume level (0.0 to 1.0)
+    }
+  ]
 }`}</pre>
                 </div>
               </div>
@@ -231,6 +327,30 @@ export default function Home() {
                   <p className="text-blue-800 text-sm">
                     <strong>💡 Pro Tip:</strong> Use the <code>waitUntil</code> function for complex animations with videos, 
                     async operations, or when you need to wait for specific DOM states before capturing the frame.
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-gray-800 mb-3">Audio Support</h3>
+                <p className="text-gray-600 mb-3">
+                  You can add background music or sound effects to your videos using the audio parameter:
+                </p>
+                
+                <div className="mb-4">
+                  <h4 className="text-lg font-medium text-gray-700 mb-2">Audio Track Properties</h4>
+                  <ul className="list-disc list-inside text-gray-600 space-y-1">
+                    <li><code className="bg-gray-100 px-1 rounded">url</code> - Direct URL to audio file (MP3, WAV, etc.)</li>
+                    <li><code className="bg-gray-100 px-1 rounded">start</code> - When to start playing (in seconds)</li>
+                    <li><code className="bg-gray-100 px-1 rounded">end</code> - Optional: when to stop playing</li>
+                    <li><code className="bg-gray-100 px-1 rounded">volume</code> - Volume level from 0.0 (silent) to 1.0 (full)</li>
+                  </ul>
+                </div>
+
+                <div className="bg-amber-50 p-3 rounded-lg">
+                  <p className="text-amber-800 text-sm">
+                    <strong>🎵 Audio Tips:</strong> You can add multiple audio tracks that will be mixed together. 
+                    Audio duration is automatically limited to match video duration.
                   </p>
                 </div>
               </div>
@@ -306,32 +426,68 @@ export default function Home() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={currentTask?.status === 'pending' || currentTask?.status === 'processing'}
                 className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
               >
-                {loading ? '🎬 Rendering Video...' : '🚀 Generate Video'}
+                {currentTask?.status === 'pending' && '⏳ Starting Render...'}
+                {currentTask?.status === 'processing' && `🎬 Rendering... ${currentTask.progress}%`}
+                {(!currentTask || currentTask.status === 'completed' || currentTask.status === 'failed') && '🚀 Generate Video'}
               </button>
             </form>
 
-            {/* Results */}
+            {/* Progress Bar */}
+            {currentTask && (currentTask.status === 'pending' || currentTask.status === 'processing') && (
+              <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-semibold text-blue-800">
+                    {currentTask.status === 'pending' ? '⏳ Preparing...' : '🎬 Rendering Video...'}
+                  </h3>
+                  <span className="text-sm text-blue-600 font-medium">{currentTask.progress}%</span>
+                </div>
+                <div className="w-full bg-blue-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${currentTask.progress}%` }}
+                  ></div>
+                </div>
+                <p className="text-sm text-blue-700 mt-2">Task ID: {currentTask.taskId}</p>
+              </div>
+            )}
+
+            {/* Error */}
             {error && (
               <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-red-700">❌ {error}</p>
               </div>
             )}
 
-            {result && (
+            {/* Failed Task */}
+            {currentTask?.status === 'failed' && (
+              <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <h3 className="text-lg font-semibold text-red-800 mb-2">❌ Rendering Failed</h3>
+                <p className="text-red-700">{currentTask.error?.error || 'Unknown error occurred'}</p>
+                {currentTask.error?.details && (
+                  <p className="text-sm text-red-600 mt-1">{currentTask.error.details}</p>
+                )}
+                <p className="text-sm text-red-600 mt-2">Task ID: {currentTask.taskId}</p>
+              </div>
+            )}
+
+            {/* Success Result */}
+            {currentTask?.status === 'completed' && currentTask.result?.success && (
               <div className="mt-6 p-6 bg-green-50 border border-green-200 rounded-lg">
                 <h3 className="text-lg font-semibold text-green-800 mb-3">✅ Video Created!</h3>
                 <div className="space-y-2 text-sm text-green-700">
-                  <p><strong>Size:</strong> {((result.video?.size ?? 0) / 1024).toFixed(2)} KB</p>
-                  <p><strong>Frames:</strong> {result.video?.frames}</p>
-                  <p><strong>Dimensions:</strong> {result.video?.width}x{result.video?.height}</p>
-                  <p><strong>Duration:</strong> {result.video?.duration}s</p>
-                  <p><strong>Video URL:</strong> <a href={result.video?.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">{result.video?.url}</a></p>
+                  <p><strong>Size:</strong> {((currentTask.result.video?.size ?? 0) / 1024).toFixed(2)} KB</p>
+                  <p><strong>Frames:</strong> {currentTask.result.video?.frames}</p>
+                  <p><strong>Dimensions:</strong> {currentTask.result.video?.width}x{currentTask.result.video?.height}</p>
+                  <p><strong>Duration:</strong> {currentTask.result.video?.duration}s</p>
+                  <p><strong>FPS:</strong> {currentTask.result.video?.fps}</p>
+                  <p><strong>Task ID:</strong> {currentTask.taskId}</p>
+                  <p><strong>Video URL:</strong> <a href={currentTask.result.video?.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">{currentTask.result.video?.url}</a></p>
                   <div className="mt-4">
                     <video controls className="w-full max-w-sm mx-auto rounded-lg">
-                      <source src={result.video?.url} type="video/mp4" />
+                      <source src={currentTask.result.video?.url} type="video/mp4" />
                       Your browser does not support the video tag.
                     </video>
                   </div>
