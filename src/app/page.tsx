@@ -45,7 +45,7 @@ export default function Home() {
 
   const pollTaskStatus = async (taskId: string) => {
     try {
-      const response = await fetch(`/api/render/${taskId}`);
+      const response = await fetch(`/api/render/task/${taskId}`);
       const data = await response.json();
       
       if (response.ok) {
@@ -176,7 +176,11 @@ export default function Home() {
     width: 1080,
     height: 1920,
     duration: 2,
-    render: examples[0].code
+    render: examples[0].code,
+    audioUrl: '',
+    audioStart: 0,
+    audioEnd: '',
+    audioVolume: 0.5
   });
 
   const handleExampleSelect = (example: { name: string; code: string }) => {
@@ -196,12 +200,28 @@ export default function Home() {
     }
 
     try {
+      // Prepare request body with audio if provided
+      const requestBody = {
+        width: formData.width,
+        height: formData.height,
+        duration: formData.duration,
+        render: formData.render,
+        ...(formData.audioUrl.trim() && {
+          audio: [{
+            url: formData.audioUrl.trim(),
+            start: formData.audioStart,
+            ...(formData.audioEnd && { end: parseFloat(formData.audioEnd) }),
+            volume: formData.audioVolume
+          }]
+        })
+      };
+
       const response = await fetch('/api/render', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(requestBody)
       });
 
       const data = await response.json();
@@ -411,6 +431,70 @@ export default function Home() {
                   onChange={(e) => setFormData(prev => ({ ...prev, duration: parseFloat(e.target.value) }))}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
+              </div>
+
+              {/* Audio Section */}
+              <div className="border-t pt-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">🎵 Background Audio (Optional)</h3>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Audio URL</label>
+                    <input
+                      type="url"
+                      value={formData.audioUrl}
+                      onChange={(e) => setFormData(prev => ({ ...prev, audioUrl: e.target.value }))}
+                      placeholder="https://example.com/music.mp3"
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Direct URL to audio file (MP3, WAV, etc.)</p>
+                  </div>
+
+                  {formData.audioUrl.trim() && (
+                    <>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Start (seconds)</label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max={formData.duration}
+                            value={formData.audioStart}
+                            onChange={(e) => setFormData(prev => ({ ...prev, audioStart: parseFloat(e.target.value) }))}
+                            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">End (optional)</label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min={formData.audioStart}
+                            max={formData.duration}
+                            value={formData.audioEnd}
+                            onChange={(e) => setFormData(prev => ({ ...prev, audioEnd: e.target.value }))}
+                            placeholder="Auto"
+                            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Volume</label>
+                          <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                            value={formData.audioVolume}
+                            onChange={(e) => setFormData(prev => ({ ...prev, audioVolume: parseFloat(e.target.value) }))}
+                            className="w-full mt-2"
+                          />
+                          <div className="text-xs text-gray-500 text-center">{(formData.audioVolume * 100).toFixed(0)}%</div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
               <div>
