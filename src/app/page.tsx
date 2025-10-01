@@ -95,16 +95,19 @@ export default function Home() {
     {
       name: "Simple Text Animation",
       code: `({time}) => {
-  return \`<h1 style="
+  return \`<div style="
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
     color: white; 
-    text-align: center; 
     font-family: Arial; 
     font-size: 48px; 
-    margin-top: 200px;
     background-color: hsl(\${time * 360}, 70%, 50%);
-    padding: 20px;
-    border-radius: 10px;
-  ">Hello \${time.toFixed(2)}s</h1>\`;
+    margin: 0;
+    padding: 0;
+  ">Hello \${time.toFixed(2)}s</div>\`;
 }`
     },
     {
@@ -281,7 +284,7 @@ export default function Home() {
   "height": 1920,     // Video height in pixels  
   "duration": 2,      // Duration in seconds
   "render": "({time, frame, duration, width, height}) => {
-    return \`<h1>Frame \${frame}</h1>\`;
+    return \`<div style='display: flex; justify-content: center; align-items: center; width: 100%; height: 100%; font-size: 48px;'>Frame \${frame}</div>\`;
   }",
   // Optional parameters:
   "fps": 24,          // Frames per second (default: 24)
@@ -308,7 +311,7 @@ export default function Home() {
                   <h4 className="text-lg font-medium text-gray-700 mb-2">Simple Format (HTML String)</h4>
                   <div className="bg-gray-100 p-3 rounded-lg text-sm font-mono">
                     <pre>{`({time, frame, duration, width, height}) => {
-  return \`<h1>Frame \${frame}</h1>\`;
+  return \`<div style="display: flex; justify-content: center; align-items: center; width: 100%; height: 100%; font-size: 48px;">Frame \${frame}</div>\`;
 }`}</pre>
                   </div>
                 </div>
