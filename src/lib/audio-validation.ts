@@ -112,7 +112,7 @@ async function getAudioDuration(filePath: string): Promise<number> {
                     const metadata = JSON.parse(stdout);
                     
                     // Check if file has audio streams
-                    const audioStreams = metadata.streams?.filter((stream: any) => stream.codec_type === 'audio');
+                    const audioStreams = metadata.streams?.filter((stream: { codec_type: string }) => stream.codec_type === 'audio');
                     if (!audioStreams || audioStreams.length === 0) {
                         reject(new Error('No audio streams found in file'));
                         return;
