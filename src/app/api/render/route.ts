@@ -7,6 +7,7 @@ import { promisify } from "util";
 import * as vm from "vm";
 import { renderTaskManager } from "../../../lib/render-tasks";
 import { RenderParams } from "@/app/api/render/types";
+import { validateAudioTracks, cleanupAudioFiles, ValidatedAudioTrack } from "../../../lib/audio-validation";
 
 const mkdir = promisify(fs.mkdir);
 const unlink = promisify(fs.unlink);
@@ -31,9 +32,25 @@ async function performRender(taskId: string, parameters: RenderParams) {
         args,
         audio
     } = parameters;
+    let validatedAudioTracks: ValidatedAudioTrack[] = [];
     try {
         console.log(`Starting render for task ${taskId}`);
         renderTaskManager.updateTaskStatus(taskId, "processing", 0);
+
+        // Validate audio files first if provided
+        if (audio && audio.length > 0) {
+            console.log(`🎵 Validating ${audio.length} audio file(s) before render...`);
+            renderTaskManager.updateTaskProgress(taskId, 5);
+            
+            const audioValidation = await validateAudioTracks(audio);
+            if (!audioValidation.success) {
+                throw new Error(`Audio validation failed: ${audioValidation.errors.join(', ')}`);
+            }
+            
+            validatedAudioTracks = audioValidation.validatedTracks;
+            console.log(`✓ All audio files validated and downloaded successfully`);
+            renderTaskManager.updateTaskProgress(taskId, 10);
+        }
 
         // Use optimized defaults for better performance
         const fps = requestedFps || 24; // Lower default FPS for better performance
@@ -150,8 +167,9 @@ async function performRender(taskId: string, parameters: RenderParams) {
                         ...(args || {})
                     };
 
-                    // Update progress based on frames rendered
-                    const progress = Math.floor((frame / totalFrames) * 70); // 70% for frames, 30% for encoding
+                    // Update progress based on frames rendered (accounting for audio validation)
+                    const baseProgress = validatedAudioTracks.length > 0 ? 10 : 0;
+                    const progress = baseProgress + Math.floor((frame / totalFrames) * 65); // 65% for frames, 25% for encoding
                     renderTaskManager.updateTaskProgress(taskId, progress);
 
                     // Execute render function on server side to avoid browser evaluation issues
@@ -435,7 +453,8 @@ async function performRender(taskId: string, parameters: RenderParams) {
 
         // Update progress for encoding phase
         console.log(`📹 Starting video encoding for task ${taskId}`);
-        renderTaskManager.updateTaskProgress(taskId, 70);
+        const baseProgress = validatedAudioTracks.length > 0 ? 10 : 0;
+        renderTaskManager.updateTaskProgress(taskId, baseProgress + 65);
 
         // Generate video with FFmpeg - optimized settings based on quality
         const getFFmpegOptions = (quality: string) => {
@@ -512,8 +531,9 @@ async function performRender(taskId: string, parameters: RenderParams) {
                 })
                 .on("progress", (progress) => {
                     if (progress.percent) {
+                        const baseProgress = validatedAudioTracks.length > 0 ? 10 : 0;
                         const encodingProgress =
-                            70 + (progress.percent / 100) * 20; // 20% for encoding
+                            baseProgress + 65 + (progress.percent / 100) * 20; // 20% for encoding
                         renderTaskManager.updateTaskProgress(
                             taskId,
                             Math.floor(encodingProgress)
@@ -525,13 +545,13 @@ async function performRender(taskId: string, parameters: RenderParams) {
         });
 
         console.log(
-            `📊 Video encoding done for task ${taskId}, updating progress to 90%`
+            `📊 Video encoding done for task ${taskId}, updating progress to ${baseProgress + 85}%`
         );
-        renderTaskManager.updateTaskProgress(taskId, 90);
+        renderTaskManager.updateTaskProgress(taskId, baseProgress + 85);
 
         // Audio mixing if audio tracks are provided
-        if (audio && audio.length > 0) {
-            console.log(`🎵 Adding ${audio.length} audio track(s) to video`);
+        if (validatedAudioTracks.length > 0) {
+            console.log(`🎵 Adding ${validatedAudioTracks.length} validated audio track(s) to video`);
 
             const finalOutputPath = path.join(
                 tempDir,
@@ -543,13 +563,13 @@ async function performRender(taskId: string, parameters: RenderParams) {
 
                 let command = ffmpeg(outputPath);
 
-                // Add audio inputs and build complex filter for all tracks
+                // Add audio inputs and build complex filter for all tracks using validated local files
                 const audioFilters: string[] = [];
                 const audioInputs: string[] = [];
 
-                for (let i = 0; i < audio.length; i++) {
-                    const audioTrack = audio[i];
-                    command = command.input(audioTrack.url);
+                for (let i = 0; i < validatedAudioTracks.length; i++) {
+                    const audioTrack = validatedAudioTracks[i];
+                    command = command.input(audioTrack.localPath);
 
                     // Build audio filter for this track
                     let audioFilter = `[${i + 1}:a]`;
@@ -577,7 +597,7 @@ async function performRender(taskId: string, parameters: RenderParams) {
                 }
 
                 // Mix all audio tracks together, but limit to video duration
-                const mixFilter = audioInputs.join('') + `amix=inputs=${audio.length}:duration=first[mixedaudio]`;
+                const mixFilter = audioInputs.join('') + `amix=inputs=${validatedAudioTracks.length}:duration=first[mixedaudio]`;
                 audioFilters.push(mixFilter);
 
                 // Combine video with mixed audio and limit audio duration to match video
@@ -605,8 +625,9 @@ async function performRender(taskId: string, parameters: RenderParams) {
                     })
                     .on("progress", (progress) => {
                         if (progress.percent) {
+                            const baseProgress = validatedAudioTracks.length > 0 ? 10 : 0;
                             const mixingProgress =
-                                90 + (progress.percent / 100) * 10; // 10% for mixing
+                                baseProgress + 85 + (progress.percent / 100) * 5; // 5% for mixing
                             renderTaskManager.updateTaskProgress(
                                 taskId,
                                 Math.floor(mixingProgress)
@@ -655,6 +676,15 @@ async function performRender(taskId: string, parameters: RenderParams) {
         const baseUrl = process.env.BASE_URL || "http://localhost:3000";
         const videoUrl = `${baseUrl}/api/video/${videoFilename}`;
 
+        // Cleanup validated audio files after successful render
+        if (validatedAudioTracks.length > 0) {
+            try {
+                await cleanupAudioFiles(validatedAudioTracks);
+            } catch (cleanupError) {
+                console.warn("Audio cleanup error:", cleanupError);
+            }
+        }
+
         // Final cleanup to ensure no hanging processes
         if (global.gc) {
             global.gc();
@@ -681,6 +711,15 @@ async function performRender(taskId: string, parameters: RenderParams) {
         console.log(`✓ Task result set for ${taskId}`);
     } catch (error) {
         console.error("Render error:", error);
+
+        // Cleanup validated audio files on error
+        if (validatedAudioTracks.length > 0) {
+            try {
+                await cleanupAudioFiles(validatedAudioTracks);
+            } catch (cleanupError) {
+                console.warn("Audio cleanup error:", cleanupError);
+            }
+        }
 
         // Cleanup on error too
         if (global.gc) {
