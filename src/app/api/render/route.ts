@@ -541,22 +541,9 @@ async function performRender(taskId: string, parameters: RenderParams) {
             await new Promise<void>((resolve, reject) => {
                 let isResolved = false;
 
-                // Set timeout for audio mixing (increased for better reliability)
-                const timeoutMs = Math.max(180000, duration * 45000); // At least 3min, or 45s per second of video
-                const timeoutId = setTimeout(() => {
-                    if (!isResolved) {
-                        isResolved = true;
-                        reject(
-                            new Error(
-                                `Audio mixing timeout after ${timeoutMs}ms`
-                            )
-                        );
-                    }
-                }, timeoutMs);
-
                 let command = ffmpeg(outputPath);
 
-                // Add audio inputs and build complex filter
+                // Add audio inputs and build complex filter for all tracks
                 const audioFilters: string[] = [];
                 const audioInputs: string[] = [];
 
@@ -576,9 +563,7 @@ async function performRender(taskId: string, parameters: RenderParams) {
 
                     // Apply timing (adelay for start, atrim for end)
                     if (audioTrack.start > 0) {
-                        audioFilter += `,adelay=${Math.round(
-                            audioTrack.start * 1000
-                        )}:all=1`;
+                        audioFilter += `,adelay=${Math.round(audioTrack.start * 1000)}:all=1`;
                     }
 
                     if (audioTrack.end !== undefined) {
@@ -592,26 +577,21 @@ async function performRender(taskId: string, parameters: RenderParams) {
                 }
 
                 // Mix all audio tracks together, but limit to video duration
-                const mixFilter =
-                    audioInputs.join("") +
-                    `amix=inputs=${audio.length}:duration=first[mixedaudio]`;
+                const mixFilter = audioInputs.join('') + `amix=inputs=${audio.length}:duration=first[mixedaudio]`;
                 audioFilters.push(mixFilter);
 
                 // Combine video with mixed audio and limit audio duration to match video
-                const complexFilter =
-                    audioFilters.join(";") +
-                    `;[mixedaudio]atrim=duration=${duration}[finalaudio]`;
+                const complexFilter = audioFilters.join(';') + `;[mixedaudio]atrim=duration=${duration}[finalaudio]`;
 
                 command
                     .complexFilter(complexFilter)
-                    .outputOptions(["-map", "0:v", "-map", "[finalaudio]"])
-                    .outputOptions(["-c:v", "copy", "-c:a", "aac"])
-                    .outputOptions(["-shortest"]) // Ensure output doesn't exceed video length
+                    .outputOptions(['-map', '0:v', '-map', '[finalaudio]'])
+                    .outputOptions(['-c:v', 'copy', '-c:a', 'aac'])
+                    .outputOptions(['-shortest']) // Ensure output doesn't exceed video length
                     .output(finalOutputPath)
                     .on("end", () => {
                         if (!isResolved) {
                             isResolved = true;
-                            clearTimeout(timeoutId);
                             console.log("✓ Audio mixing completed");
                             resolve();
                         }
@@ -619,7 +599,6 @@ async function performRender(taskId: string, parameters: RenderParams) {
                     .on("error", (err) => {
                         if (!isResolved) {
                             isResolved = true;
-                            clearTimeout(timeoutId);
                             console.error("✗ Audio mixing error:", err);
                             reject(err);
                         }
@@ -644,7 +623,8 @@ async function performRender(taskId: string, parameters: RenderParams) {
                 await fs.promises.rename(finalOutputPath, outputPath);
                 console.log("✓ Replaced video with audio-mixed version");
             } catch (err) {
-                console.warn("Failed to replace video file:", err);
+                console.error("Failed to replace video file:", err);
+                throw err;
             }
         }
 
